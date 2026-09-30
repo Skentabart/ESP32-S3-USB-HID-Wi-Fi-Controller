@@ -30,7 +30,8 @@
     - Quick actions
     - No pull-to-refresh
     - No page scrolling during mouse control
-    - Vertical auto-returning scroll slider
+    - Vertical auto-returning continuous scroll slider
+    - Smartphone-style keyboard with large Space / Enter / Backspace
 
   Arduino IDE:
     Board:
@@ -100,7 +101,7 @@ bool heldWin   = false;
 // MACROS
 // ============================================================
 
-#define MAX_MACROS 30
+#define MAX_MACROS 50
 #define MACRO_NAME_LEN 40
 #define MACRO_DATA_LEN 1500
 
@@ -113,2291 +114,1012 @@ Macro macros[MAX_MACROS];
 
 int macroCount = 0;
 
+
+// ============================================================
+// NON-BLOCKING MACRO ENGINE
+// ============================================================
+
+bool macroRunning = false;
+String macroBuffer = "";
+size_t macroPos = 0;
+unsigned long macroWaitUntil = 0;
+
+
+// ============================================================
+// SYSTEM MACROS
+// ============================================================
+
+
+
+// ============================================================
+// FORWARD DECLARATIONS
+// ============================================================
+
+void handleRoot();
+void handleMove();
+void handleMouseDown();
+void handleMouseUp();
+void handleScroll();
+void handleLanguage();
+void handleModifiers();
+void handleClearModifiers();
+void handleVirtualKey();
+void handleCombo();
+void handleType();
+void handleSettings();
+void handleSensitivity();
+void handleWiFi();
+void handleMacros();
+void handleMacroGet();
+void handleMacroSave();
+void handleMacroDelete();
+void handleMacroRun();
+void handleMacroStop();
+void handleReset();
+void captivePortal();
+void startWiFi();
+void startServer();
+void startMacroExecution(int id);
+void stopMacroExecution();
+void processMacroStep();
+void executeAction(String action);
+void saveMacros();
+void loadMacros();
+void createDefaultMacros();
+void releaseAllModifiers();
+void switchLanguagePC();
+uint8_t usageForKey(String k);
+uint8_t russianUsage(String k);
+
 // ============================================================
 // HTML
 // ============================================================
 
 const char INDEX_HTML[] PROGMEM = R"HTML(
-
 <!DOCTYPE html>
-
 <html lang="ru">
-
 <head>
-
 <meta charset="UTF-8">
-
-<meta name="viewport"
-      content="width=device-width,
-               initial-scale=1,
-               maximum-scale=1,
-               user-scalable=no,
-               viewport-fit=cover">
-
-<meta name="mobile-web-app-capable"
-      content="yes">
-
-<meta name="apple-mobile-web-app-capable"
-      content="yes">
-
-<meta name="theme-color"
-      content="#0b0e12">
-
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b0e12">
 <title>ESP32 HID</title>
-
 <style>
-
-* {
-  box-sizing:border-box;
-  -webkit-tap-highlight-color:transparent;
-  user-select:none;
-}
-
-html,
-body {
-
-  width:100%;
-  height:100%;
-
-  margin:0;
-  padding:0;
-
-  overflow:hidden;
-
-  background:#080b0e;
-  color:#fff;
-
-  overscroll-behavior:none;
-  overscroll-behavior-y:none;
-
-  touch-action:none;
-
-  font-family:
-    Arial,
-    Helvetica,
-    sans-serif;
-
-}
-
-body {
-
-  position:fixed;
-
-  left:0;
-  top:0;
-  right:0;
-  bottom:0;
-
-}
-
-button {
-
-  border:0;
-
-  color:white;
-
-  background:#20262d;
-
-  border-radius:12px;
-
-  min-height:46px;
-
-  padding:8px 12px;
-
-  font-size:14px;
-
-  font-weight:600;
-
-  touch-action:manipulation;
-
-}
-
-button:active {
-
-  transform:scale(.97);
-
-}
-
-button.active {
-
-  background:#0b6f9f;
-
-  box-shadow:
-    0 0 0 2px #24b9ff inset;
-
-}
-
-button.green {
-
-  background:#205b43;
-
-}
-
-button.red {
-
-  background:#632d2d;
-
-}
-
-button.blue {
-
-  background:#1d506d;
-
-}
-
-#app {
-
-  width:100%;
-  height:100dvh;
-
-  display:flex;
-
-  flex-direction:column;
-
-  overflow:hidden;
-
-  overscroll-behavior:none;
-
-}
-
-#top {
-
-  height:58px;
-
-  flex-shrink:0;
-
-  display:flex;
-
-  align-items:center;
-
-  gap:5px;
-
-  padding:5px;
-
-  background:#11161b;
-
-  border-bottom:
-    1px solid #293039;
-
-}
-
-.topButton {
-
-  min-width:47px;
-
-  min-height:46px;
-
-  padding:5px 7px;
-
-}
-
-#status {
-
-  flex:1;
-
-  min-width:0;
-
-  text-align:center;
-
-  color:#8995a1;
-
-  font-size:12px;
-
-  overflow:hidden;
-
-  white-space:nowrap;
-
-}
-
-#touchpadContainer {
-  flex:1;
-  min-height:0;
-  display:flex;
-  position:relative;
-  overflow:hidden;
-  touch-action:none;
-  overscroll-behavior:none;
-}
-
-#touchpad {
-
-  flex:1;
-
-  min-height:0;
-
-  position:relative;
-
-  overflow:hidden;
-
-  touch-action:none;
-
-  overscroll-behavior:none;
-
-  background:
-
-    radial-gradient(
-      circle at center,
-      #151c22 0,
-      #0c1014 75%
-    );
-
-}
-
-#touchpad::after {
-
-  content:"TOUCHPAD";
-
-  position:absolute;
-
-  left:50%;
-  top:50%;
-
-  transform:
-    translate(-50%,-50%);
-
-  color:#252e36;
-
-  font-size:13px;
-
-  letter-spacing:4px;
-
-  pointer-events:none;
-
-}
-
-#scrollTrack {
-  width: 24px;
-  background: #11161b;
-  border-left: 1px solid #293039;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  touch-action: none;
-}
-
-#scrollThumb {
-  width: 16px;
-  height: 60px;
-  background: #20262d;
-  border: 1px solid #3a4552;
-  border-radius: 8px;
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  touch-action: none;
-  transition: top 0.15s ease-out;
-}
-
-#scrollThumb.active {
-  background: #0b6f9f;
-  border-color: #24b9ff;
-  transition: none;
-}
-
-#mouseButtons {
-
-  height:118px;
-
-  flex-shrink:0;
-
-  display:grid;
-
-  grid-template-columns:
-    1fr 1fr;
-
-  gap:6px;
-
-  padding:6px;
-
-  background:#11161b;
-
-}
-
-.mouseButton {
-
-  height:100%;
-
-  min-height:105px;
-
-  border-radius:20px;
-
-  font-size:23px;
-
-}
-
-.mouseLeft {
-
-  background:#1b3d51;
-
-}
-
-.mouseRight {
-
-  background:#513127;
-
-}
-
-#keyboard {
-
-  position:absolute;
-
-  z-index:100;
-
-  left:0;
-  right:0;
-  bottom:0;
-
-  max-height:82dvh;
-
-  padding:7px;
-
-  overflow:auto;
-
-  background:#0e1318;
-
-  border-top:
-    1px solid #303943;
-
-  transform:
-    translateY(105%);
-
-  transition:
-    transform .15s ease;
-
-  touch-action:pan-y;
-
-  overscroll-behavior:contain;
-
-}
-
-#keyboard.open {
-
-  transform:
-    translateY(0);
-
-}
-
-.keyRow {
-
-  display:flex;
-
-  gap:4px;
-
-  margin-bottom:4px;
-
-}
-
-.key {
-
-  flex:1;
-
-  min-width:0;
-
-  min-height:45px;
-
-  padding:3px;
-
-  font-size:13px;
-
-}
-
-.key.wide {
-
-  flex:2;
-
-}
-
-.key.modifier {
-
-  background:#303944;
-
-}
-
-#keyboardBar {
-
-  display:flex;
-
-  gap:5px;
-
-  margin-bottom:6px;
-
-}
-
-#keyboardBar button {
-
-  flex:1;
-
-}
-
-#keyboardTitle {
-
-  flex:2;
-
-  display:flex;
-
-  align-items:center;
-
-  justify-content:center;
-
-  color:#aeb8c2;
-
-}
-
-#panel {
-
-  display:none;
-
-  position:absolute;
-
-  z-index:200;
-
-  inset:0;
-
-  background:#090c10;
-
-  flex-direction:column;
-
-  overflow:hidden;
-
-  touch-action:auto;
-
-}
-
-#panelHeader {
-
-  height:57px;
-
-  flex-shrink:0;
-
-  display:flex;
-
-  align-items:center;
-
-  gap:7px;
-
-  padding:5px;
-
-  background:#11161b;
-
-  border-bottom:
-    1px solid #29313a;
-
-}
-
-#panelTitle {
-
-  flex:1;
-
-  font-weight:bold;
-
-}
-
-#panelBody {
-
-  flex:1;
-
-  overflow:auto;
-
-  padding:9px;
-
-  touch-action:pan-y;
-
-  overscroll-behavior:contain;
-
-}
-
-.card {
-
-  background:#141a20;
-
-  border:1px solid #282f37;
-
-  border-radius:14px;
-
-  padding:10px;
-
-  margin-bottom:9px;
-
-}
-
-.cardTitle {
-
-  font-size:16px;
-
-  font-weight:bold;
-
-  margin-bottom:8px;
-
-}
-
-.grid {
-
-  display:grid;
-
-  grid-template-columns:
-    repeat(2,1fr);
-
-  gap:6px;
-
-}
-
-input,
-textarea,
-select {
-
-  width:100%;
-
-  border:1px solid #39434d;
-
-  border-radius:10px;
-
-  background:#080b0e;
-
-  color:white;
-
-  padding:10px;
-
-  font-size:15px;
-
-  user-select:text;
-
-}
-
-textarea {
-
-  min-height:130px;
-
-  font-family:monospace;
-
-  resize:none;
-
-}
-
-label {
-
-  display:block;
-
-  color:#8f9ba7;
-
-  font-size:12px;
-
-  margin:
-    7px 0 4px;
-
-}
-
-.small {
-
-  color:#788591;
-
-  font-size:11px;
-
-  line-height:1.45;
-
-}
-
-.actionRow {
-
-  display:flex;
-
-  gap:5px;
-
-  margin-bottom:5px;
-
-}
-
-.actionRow button {
-
-  flex:1;
-
-}
-
-.macroRow {
-
-  display:flex;
-
-  gap:5px;
-
-  margin-bottom:6px;
-
-}
-
-.macroRun {
-
-  flex:1;
-
-  text-align:left;
-
-}
-
-.actionItem {
-
-  background:#1b2229;
-
-  border:1px solid #2e3841;
-
-  border-radius:10px;
-
-  padding:8px;
-
-  margin-bottom:5px;
-
-}
-
-.actionHeader {
-
-  display:flex;
-
-  align-items:center;
-
-  gap:5px;
-
-}
-
-.actionHeader span {
-
-  flex:1;
-
-}
-
-.actionButtons {
-
-  display:flex;
-
-  gap:3px;
-
-}
-
-.actionButtons button {
-
-  min-height:36px;
-
-  min-width:38px;
-
-  padding:3px;
-
-}
-
-#lang {
-
-  min-width:53px;
-
-}
-
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{width:100%;height:100%;margin:0;padding:0;overflow:hidden;background:#080b0e;color:#fff;overscroll-behavior:none;touch-action:none;font-family:Arial,Helvetica,sans-serif}
+body{position:fixed;left:0;top:0;right:0;bottom:0}
+button{border:0;color:#fff;background:#20262d;border-radius:12px;min-height:46px;padding:8px 12px;font-size:14px;font-weight:600;touch-action:manipulation}
+button:active{transform:scale(.97)}
+button.active{background:#0b6f9f;box-shadow:0 0 0 2px #24b9ff inset}
+button.green{background:#205b43}
+button.red{background:#632d2d}
+button.blue{background:#1d506d}
+button.mic{background:#6e1d50}
+button.mic.listening{background:#b02854;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(176,40,84,.7)}50%{box-shadow:0 0 0 8px rgba(176,40,84,0)}}
+#app{width:100%;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+#top{height:58px;flex-shrink:0;display:flex;align-items:center;gap:5px;padding:5px;background:#11161b;border-bottom:1px solid #293039}
+.topButton{min-width:47px;min-height:46px;padding:5px 7px;font-size:12px}
+#status{flex:1;min-width:0;text-align:center;color:#8995a1;font-size:12px;overflow:hidden;white-space:nowrap}
+#touchpadContainer{flex:1;min-height:0;display:flex;position:relative;overflow:hidden;touch-action:none}
+#touchpad{flex:1;position:relative;overflow:hidden;touch-action:none;background:radial-gradient(circle at center,#151c22 0,#0c1014 75%)}
+#touchpad::after{content:"TOUCHPAD";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#252e36;font-size:13px;letter-spacing:4px;pointer-events:none}
+#scrollTrack{width:28px;background:#11161b;border-left:1px solid #293039;position:relative;display:flex;align-items:center;justify-content:center;touch-action:none}
+#scrollThumb{width:20px;height:60px;background:#20262d;border:1px solid #3a4552;border-radius:10px;position:absolute;top:50%;transform:translateY(-50%);touch-action:none;transition:top .15s ease-out}
+#scrollThumb.active{background:#0b6f9f;border-color:#24b9ff;transition:none}
+#mouseButtons{height:100px;flex-shrink:0;display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:6px;background:#11161b}
+.mouseButton{height:100%;min-height:88px;border-radius:20px;font-size:20px;font-weight:700}
+.mouseLeft{background:#1b3d51}
+.mouseRight{background:#513127}
+#keyboard{position:absolute;z-index:100;left:0;right:0;bottom:0;max-height:75dvh;padding:6px;overflow:auto;background:#0e1318;border-top:1px solid #303943;transform:translateY(105%);transition:transform .15s ease;touch-action:pan-y;overscroll-behavior:contain}
+#keyboard.open{transform:translateY(0)}
+.keyRow{display:flex;gap:3px;margin-bottom:3px}
+.key{flex:1;min-width:0;min-height:44px;padding:3px;font-size:13px;border-radius:8px}
+.key.modifier{background:#303944}
+.key.symbol{background:#1a2430;font-size:15px}
+.key.backspace{background:#632d2d}
+.key.enter{background:#205b43;flex:2}
+.key.space{flex:5;font-size:11px;color:#aeb8c2}
+.key.func{background:#1d506d;font-size:12px}
+.key.micKey{background:#6e1d50}
+.key.micKey.listening{background:#b02854;animation:pulse 1s infinite}
+#keyboardBar{display:flex;gap:5px;margin-bottom:6px}
+#keyboardBar button{flex:1}
+#keyboardTitle{flex:2;display:flex;align-items:center;justify-content:center;color:#aeb8c2}
+#panel{display:none;position:absolute;z-index:200;inset:0;background:#090c10;flex-direction:column;overflow:hidden;touch-action:auto}
+#panelHeader{height:57px;flex-shrink:0;display:flex;align-items:center;gap:7px;padding:5px;background:#11161b;border-bottom:1px solid #29313a}
+#panelTitle{flex:1;font-weight:bold}
+#panelBody{flex:1;overflow:auto;padding:9px;touch-action:pan-y;overscroll-behavior:contain}
+.card{background:#141a20;border:1px solid #282f37;border-radius:14px;padding:10px;margin-bottom:9px}
+.cardTitle{font-size:16px;font-weight:bold;margin-bottom:8px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+input,textarea,select{width:100%;border:1px solid #39434d;border-radius:10px;background:#080b0e;color:#fff;padding:10px;font-size:15px;user-select:text}
+label{display:block;color:#8f9ba7;font-size:12px;margin:7px 0 4px}
+.small{color:#788591;font-size:11px;line-height:1.45}
+.macroRow{display:flex;gap:5px;margin-bottom:6px}
+.macroRun{flex:1;text-align:left}
+.actionItem{background:#1b2229;border:1px solid #2e3841;border-radius:10px;padding:8px;margin-bottom:5px}
+.actionHeader{display:flex;align-items:center;gap:5px}
+.actionHeader span{flex:1}
+.actionButtons{display:flex;gap:3px}
+.actionButtons button{min-height:36px;min-width:38px;padding:3px}
+#lang{min-width:53px}
+.voiceStatus{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#b02854;color:#fff;padding:10px 20px;border-radius:20px;z-index:300;display:none;font-size:13px}
+.voiceStatus.active{display:block;animation:pulse 1.5s infinite}
 </style>
-
 </head>
-
 <body>
-
 <div id="app">
-
-  <div id="top">
-
-    <button
-      class="topButton"
-      onclick="quickCombo('CTRL+C')">
-      COPY
-    </button>
-
-    <button
-      class="topButton"
-      onclick="quickCombo('CTRL+V')">
-      PASTE
-    </button>
-
-    <div id="status">
-      ESP32 HID
-    </div>
-
-    <button
-      id="lang"
-      class="topButton"
-      onclick="toggleLanguage()">
-      EN
-    </button>
-
-    <button
-      class="topButton"
-      onclick="openMacros()">
-      MAC
-    </button>
-
-    <button
-      class="topButton"
-      onclick="openSettings()">
-      ⚙
-    </button>
-
-    <button
-      class="topButton"
-      onclick="toggleKeyboard()">
-      ⌨
-    </button>
-
-  </div>
-
-  <div id="touchpadContainer">
-    <div id="touchpad"></div>
-    <div id="scrollTrack">
-      <div id="scrollThumb"></div>
-    </div>
-  </div>
-
-  <div id="mouseButtons">
-
-    <button
-      class="mouseButton mouseLeft"
-      onpointerdown="mouseDown(1)"
-      onpointerup="mouseUp(1)"
-      onpointercancel="mouseUp(1)">
-      LEFT
-    </button>
-
-    <button
-      class="mouseButton mouseRight"
-      onpointerdown="mouseDown(2)"
-      onpointerup="mouseUp(2)"
-      onpointercancel="mouseUp(2)">
-      RIGHT
-    </button>
-
-  </div>
-
+<div id="top">
+<button class="topButton" onclick="quickCombo('CTRL+C')">COPY</button>
+<button class="topButton" onclick="quickCombo('CTRL+V')">PASTE</button>
+<div id="status">ESP32 HID</div>
+<button id="lang" class="topButton" onclick="toggleLanguage()">EN</button>
+<button class="topButton" onclick="openMacros()">MAC</button>
+<button class="topButton" onclick="openSettings()">⚙</button>
+<button class="topButton" onclick="toggleKeyboard()">⌨</button>
 </div>
-
+<div id="touchpadContainer">
+<div id="touchpad"></div>
+<div id="scrollTrack"><div id="scrollThumb"></div></div>
+</div>
+<div id="mouseButtons">
+<button class="mouseButton mouseLeft" onpointerdown="mouseDown(1)" onpointerup="mouseUp(1)" onpointercancel="mouseUp(1)">LEFT</button>
+<button class="mouseButton mouseRight" onpointerdown="mouseDown(2)" onpointerup="mouseUp(2)" onpointercancel="mouseUp(2)">RIGHT</button>
+</div>
+</div>
 <div id="keyboard">
-
-  <div id="keyboardBar">
-
-    <button onclick="clearModifiers()">
-      CLR
-    </button>
-
-    <div id="keyboardTitle">
-      KEYBOARD
-    </div>
-
-    <button onclick="toggleLanguage()"
-            id="keyboardLang">
-      EN
-    </button>
-
-    <button onclick="toggleKeyboard()">
-      ✕
-    </button>
-
-  </div>
-
-  <div id="keys"></div>
-
+<div id="keyboardBar">
+<button onclick="clearModifiers()">CLR</button>
+<div id="keyboardTitle">KEYBOARD</div>
+<button onclick="toggleLanguage()" id="keyboardLang">EN</button>
+<button onclick="toggleKeyboard()">✕</button>
 </div>
-
+<div id="keys"></div>
+</div>
 <div id="panel">
-
-  <div id="panelHeader">
-
-    <button onclick="closePanel()">
-      ←
-    </button>
-
-    <div id="panelTitle">
-      PANEL
-    </div>
-
-  </div>
-
-  <div id="panelBody"></div>
-
+<div id="panelHeader">
+<button onclick="closePanel()">←</button>
+<div id="panelTitle">PANEL</div>
 </div>
-
+<div id="panelBody"></div>
+</div>
+<div id="voiceStatus" class="voiceStatus">🎤 Говорите...</div>
 <script>
+let language='EN';
+let keyboardLayer='letters';
+let modifiers={CTRL:false,SHIFT:false,ALT:false,WIN:false};
+let pointerActive=false,lastX=0,lastY=0,moveQueueX=0,moveQueueY=0,lastMoveSend=0;
+let recognition=null,voiceListening=false;
+let longPressTimer=null,longPressInterval=null;
 
-/* ============================================================
-   STATE
-   ============================================================ */
+let voiceFinalBuffer = '';
 
-let language = 'EN';
+function voiceNormalize(text){
+  let t = String(text || '').trim();
+  if(!t) return '';
 
-let modifiers = {
+  if(language === 'RU'){
+    const replacements = [
+      [/точка с запятой/gi, ';'],
+      [/новая строка/gi, '\n'],
+      [/перенос строки/gi, '\n'],
+      [/пробел/gi, ' '],
+      [/табуляция/gi, '\t'],
+      [/ввод/gi, '\n'],
+      [/\bтаб\b/gi, '\t'],
+      [/двоеточие/gi, ':'],
+      [/точка/gi, '.'],
+      [/запятая/gi, ','],
+      [/вопросительный знак/gi, '?'],
+      [/восклицательный знак/gi, '!']
+    ];
+    replacements.forEach(([re,v]) => t=t.replace(re,v));
+  } else {
+    const replacements = [
+      [/semicolon/gi, ';'],
+      [/new paragraph/gi, '\n\n'],
+      [/new line/gi, '\n'],
+      [/\bspace\b/gi, ' '],
+      [/\btab\b/gi, '\t'],
+      [/\benter\b/gi, '\n'],
+      [/colon/gi, ':'],
+      [/period/gi, '.'],
+      [/comma/gi, ','],
+      [/question mark/gi, '?'],
+      [/exclamation mark/gi, '!']
+    ];
+    replacements.forEach(([re,v]) => t=t.replace(re,v));
+  }
 
-  CTRL:false,
-  SHIFT:false,
-  ALT:false,
-  WIN:false
-
-};
-
-let pointerActive = false;
-
-let lastX = 0;
-let lastY = 0;
-
-let moveQueueX = 0;
-let moveQueueY = 0;
-
-let lastMoveSend = 0;
-
-/* ============================================================
-   LANGUAGE
-   ============================================================ */
-
-async function toggleLanguage() {
-
-  await fetch('/api/language');
-
-  language =
-    language === 'EN'
-      ? 'RU'
-      : 'EN';
-
-  updateLanguageUI();
-
-  renderKeyboard();
-
+  return t;
 }
 
-function updateLanguageUI() {
-
-  document.getElementById('lang')
-    .innerText = language;
-
-  document.getElementById('keyboardLang')
-    .innerText = language;
-
+function voiceSetStatus(text){
+  const el=document.getElementById('voiceStatus');
+  if(!el) return;
+  el.innerText=text ? '🎤 ' + text : '🎤 Говорите...';
 }
 
-/* ============================================================
-   TOUCHPAD
-   ============================================================ */
+async function sendVoiceText(text){
+  const normalized=voiceNormalize(text);
+  if(!normalized) return;
 
-const touchpad =
-  document.getElementById('touchpad');
+  try{
+    await fetch('/api/type',{
+      method:'POST',
+      headers:{
+        'Content-Type':
+          'application/x-www-form-urlencoded;charset=UTF-8'
+      },
+      body:
+        'text='+encodeURIComponent(normalized)+
+        '&lang='+encodeURIComponent(language)
+    });
+  }catch(e){
+    console.log('voice send error',e);
+  }
+}
 
-touchpad.addEventListener(
-  'pointerdown',
-  function(e) {
+function initVoice(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 
-    e.preventDefault();
+  if(!SR)
+    return false;
 
-    pointerActive = true;
+  recognition=new SR();
 
-    lastX = e.clientX;
-    lastY = e.clientY;
+  recognition.continuous=true;
+  recognition.interimResults=true;
+  recognition.maxAlternatives=1;
 
-    touchpad.setPointerCapture(
-      e.pointerId
+  recognition.onstart=()=>{
+    voiceListening=true;
+    voiceFinalBuffer='';
+    document.getElementById('voiceStatus').classList.add('active');
+    voiceSetStatus('');
+    document.querySelectorAll('.micKey').forEach(
+      b=>b.classList.add('listening')
+    );
+  };
+
+  recognition.onresult=async(e)=>{
+    let interim='';
+
+    for(
+      let i=e.resultIndex;
+      i<e.results.length;
+      i++
+    ){
+
+      const text=
+        e.results[i][0].transcript;
+
+      if(e.results[i].isFinal){
+
+        voiceFinalBuffer +=
+          (voiceFinalBuffer ? ' ' : '') +
+          text;
+
+        await sendVoiceText(text);
+
+      }else{
+
+        interim += text;
+
+      }
+
+    }
+
+    voiceSetStatus(
+      interim || 'Говорите...'
     );
 
-  },
-  {passive:false}
-);
+  };
 
-touchpad.addEventListener(
-  'pointermove',
-  function(e) {
-
-    e.preventDefault();
-
-    if(!pointerActive)
-      return;
-
-    const dx =
-      e.clientX - lastX;
-
-    const dy =
-      e.clientY - lastY;
-
-    lastX = e.clientX;
-    lastY = e.clientY;
-
-    moveQueueX += dx;
-    moveQueueY += dy;
-
-    sendMouseMove();
-
-  },
-  {passive:false}
-);
-
-touchpad.addEventListener(
-  'pointerup',
-  function(e) {
-
-    e.preventDefault();
-
-    pointerActive = false;
-
-  },
-  {passive:false}
-);
-
-touchpad.addEventListener(
-  'pointercancel',
-  function(e) {
-
-    pointerActive = false;
-
-  },
-  {passive:false}
-);
-
-/*
-  Do not allow browser gesture handling.
-*/
-
-document.addEventListener(
-  'touchmove',
-  function(e) {
+  recognition.onerror=(e)=>{
 
     if(
-      e.target === touchpad ||
-      touchpad.contains(e.target) ||
-      e.target === scrollTrack ||
-      scrollTrack.contains(e.target)
-    ) {
+      e.error === 'not-allowed' ||
+      e.error === 'service-not-allowed'
+    ){
 
-      e.preventDefault();
+      voiceListening=false;
+
+      document
+        .getElementById('voiceStatus')
+        .classList.remove('active');
+
+      document
+        .querySelectorAll('.micKey')
+        .forEach(
+          b=>b.classList.remove('listening')
+        );
 
     }
 
-  },
-  {passive:false}
-);
+  };
 
-document.addEventListener(
-  'gesturestart',
-  function(e) {
-    e.preventDefault();
-  },
-  {passive:false}
-);
+  recognition.onend=()=>{
 
-document.addEventListener(
-  'gesturechange',
-  function(e) {
-    e.preventDefault();
-  },
-  {passive:false}
-);
+    if(voiceListening){
 
-document.addEventListener(
-  'gestureend',
-  function(e) {
-    e.preventDefault();
-  },
-  {passive:false}
-);
+      try{
 
-/* ============================================================
-   SCROLL JOYSTICK
-   ============================================================ */
+        recognition.lang =
+          language === 'RU'
+            ? 'ru-RU'
+            : 'en-US';
 
-const scrollTrack = document.getElementById('scrollTrack');
-const scrollThumb = document.getElementById('scrollThumb');
+        recognition.start();
+
+        return;
+
+      }catch(e){}
+
+    }
+
+    voiceListening=false;
+
+    document
+      .getElementById('voiceStatus')
+      .classList.remove('active');
+
+    document
+      .querySelectorAll('.micKey')
+      .forEach(
+        b=>b.classList.remove('listening')
+      );
+
+  };
+
+  return true;
+}
+
+function toggleVoice(){
+
+  if(!recognition){
+
+    if(!initVoice()){
+
+      alert(
+        'Голосовой ввод не поддерживается этим браузером.'
+      );
+
+      return;
+
+    }
+
+  }
+
+  if(voiceListening){
+
+    voiceListening=false;
+
+    try{
+      recognition.stop();
+    }catch(e){}
+
+  }else{
+
+    voiceFinalBuffer='';
+
+    recognition.lang =
+      language === 'RU'
+        ? 'ru-RU'
+        : 'en-US';
+
+    try{
+      recognition.start();
+    }catch(e){}
+
+  }
+
+}
+
+async function toggleLanguage(){
+await fetch('/api/language');
+language=(language==='EN')?'RU':'EN';
+updateLanguageUI();renderKeyboard();
+}
+function updateLanguageUI(){
+document.getElementById('lang').innerText=language;
+document.getElementById('keyboardLang').innerText=language;
+}
+
+const touchpad=document.getElementById('touchpad');
+touchpad.addEventListener('pointerdown',function(e){e.preventDefault();pointerActive=true;lastX=e.clientX;lastY=e.clientY;touchpad.setPointerCapture(e.pointerId);},{passive:false});
+touchpad.addEventListener('pointermove',function(e){e.preventDefault();if(!pointerActive)return;const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;moveQueueX+=dx;moveQueueY+=dy;sendMouseMove();},{passive:false});
+touchpad.addEventListener('pointerup',function(e){e.preventDefault();pointerActive=false;},{passive:false});
+touchpad.addEventListener('pointercancel',function(){pointerActive=false;},{passive:false});
+document.addEventListener('touchmove',function(e){if(e.target===touchpad||touchpad.contains(e.target)||e.target===scrollTrack||scrollTrack.contains(e.target))e.preventDefault();},{passive:false});
+['gesturestart','gesturechange','gestureend'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault(),{passive:false}));
+
+const scrollTrack =
+  document.getElementById('scrollTrack');
+
+const scrollThumb =
+  document.getElementById('scrollThumb');
+
 let scrollActive = false;
-let scrollInterval = null;
-let scrollDirection = 0;
+let scrollTimer = null;
+let scrollOffset = 0;
+let scrollLastY = 0;
 
-function updateScrollPos(e) {
-  const rect = scrollTrack.getBoundingClientRect();
-  const centerY = rect.height / 2;
-  let y = e.clientY - rect.top;
-  
-  const thumbH = 60;
-  const minY = thumbH / 2;
-  const maxY = rect.height - thumbH / 2;
-  y = Math.max(minY, Math.min(maxY, y));
-  
-  scrollThumb.style.top = y + 'px';
-  
-  const diff = y - centerY;
-  if (diff > 15) scrollDirection = 1;
-  else if (diff < -15) scrollDirection = -1;
-  else scrollDirection = 0;
+function clamp(v,min,max){
+  return Math.max(
+    min,
+    Math.min(
+      max,
+      v
+    )
+  );
 }
 
-scrollTrack.addEventListener('pointerdown', function(e) {
+function updateScrollThumb(){
+
+  scrollThumb.style.transition =
+    'none';
+
+  scrollThumb.style.top =
+    'calc(50% + ' +
+    scrollOffset +
+    'px)';
+
+}
+
+function scrollDown(e){
+
   e.preventDefault();
+
   scrollActive = true;
-  scrollThumb.classList.add('active');
-  scrollTrack.setPointerCapture(e.pointerId);
-  updateScrollPos(e);
-  
-  if (!scrollInterval) {
-    scrollInterval = setInterval(() => {
-      if (scrollActive && scrollDirection !== 0) {
-        fetch('/api/scroll?v=' + (scrollDirection * 3), {keepalive: true});
-      }
-    }, 50);
-  }
-}, {passive: false});
 
-scrollTrack.addEventListener('pointermove', function(e) {
-  if (!scrollActive) return;
+  scrollLastY =
+    e.clientY;
+
+  const rect =
+    scrollTrack.getBoundingClientRect();
+
+  const limit =
+    Math.max(
+      20,
+      rect.height / 2 - 45
+    );
+
+  const center =
+    rect.top +
+    rect.height / 2;
+
+  scrollOffset =
+    clamp(
+      e.clientY - center,
+      -limit,
+      limit
+    );
+
+  scrollThumb.classList.add(
+    'active'
+  );
+
+  updateScrollThumb();
+
+  try{
+    scrollTrack.setPointerCapture(
+      e.pointerId
+    );
+  }catch(err){}
+
+  startScrollTimer();
+
+}
+
+function scrollMove(e){
+
+  if(!scrollActive)
+    return;
+
   e.preventDefault();
-  updateScrollPos(e);
-}, {passive: false});
 
-function endScroll(e) {
-  if (!scrollActive) return;
+  const rect =
+    scrollTrack.getBoundingClientRect();
+
+  const limit =
+    Math.max(
+      20,
+      rect.height / 2 - 45
+    );
+
+  const dy =
+    e.clientY -
+    scrollLastY;
+
+  scrollLastY =
+    e.clientY;
+
+  scrollOffset =
+    clamp(
+      scrollOffset + dy,
+      -limit,
+      limit
+    );
+
+  updateScrollThumb();
+
+}
+
+function scrollUp(e){
+
+  if(!scrollActive)
+    return;
+
+  e.preventDefault();
+
   scrollActive = false;
-  scrollDirection = 0;
-  scrollThumb.classList.remove('active');
-  scrollThumb.style.top = '50%';
-  
-  if (scrollInterval) {
-    clearInterval(scrollInterval);
-    scrollInterval = null;
-  }
-}
 
-scrollTrack.addEventListener('pointerup', endScroll, {passive: false});
-scrollTrack.addEventListener('pointercancel', endScroll, {passive: false});
+  stopScrollTimer();
 
-/* ============================================================
-   MOUSE MOVE
-   ============================================================ */
-
-function sendMouseMove() {
-
-  const now =
-    performance.now();
-
-  if(
-    now - lastMoveSend < 12
-  )
-    return;
-
-  if(
-    Math.abs(moveQueueX) < 1 &&
-    Math.abs(moveQueueY) < 1
-  )
-    return;
-
-  const x =
-    Math.round(moveQueueX);
-
-  const y =
-    Math.round(moveQueueY);
-
-  moveQueueX -= x;
-  moveQueueY -= y;
-
-  lastMoveSend = now;
-
-  fetch(
-    '/api/move?x=' +
-    x +
-    '&y=' +
-    y,
-    {
-      keepalive:true
-    }
-  );
-
-}
-
-/* ============================================================
-   MOUSE BUTTONS
-   ============================================================ */
-
-function mouseDown(button) {
-
-  fetch(
-    '/api/mousedown?b=' +
-    button
-  );
-
-}
-
-function mouseUp(button) {
-
-  fetch(
-    '/api/mouseup?b=' +
-    button
-  );
-
-}
-
-/* ============================================================
-   KEYBOARD
-   ============================================================ */
-
-function renderKeyboard() {
-
-  const root =
-    document.getElementById('keys');
-
-  root.innerHTML = '';
-
-  const rowsEN = [
-    [
-      'ESC',
-      'F1','F2','F3','F4',
-      'F5','F6','F7','F8',
-      'F9','F10','F11','F12'
-    ],
-    [
-      '`','1','2','3','4',
-      '5','6','7','8','9','0',
-      '-','='
-    ],
-    [
-      'Q','W','E','R','T',
-      'Y','U','I','O','P',
-      '[',']'
-    ],
-    [
-      'A','S','D','F','G',
-      'H','J','K','L',
-      ';',"'"
-    ],
-    [
-      'SHIFT','Z','X','C','V',
-      'B','N','M',',','.',
-      'BACKSPACE'
-    ]
-  ];
-
-  const rowsRU = [
-    [
-      'ESC',
-      'F1','F2','F3','F4',
-      'F5','F6','F7','F8',
-      'F9','F10','F11','F12'
-    ],
-    [
-      'Ё','1','2','3','4',
-      '5','6','7','8','9','0',
-      '-','='
-    ],
-    [
-      'Й','Ц','У','К','Е',
-      'Н','Г','Ш','Щ','З',
-      'Х','Ъ'
-    ],
-    [
-      'Ф','Ы','В','А','П',
-      'Р','О','Л','Д','Ж',
-      'Э'
-    ],
-    [
-      'SHIFT','Я','Ч','С','М',
-      'И','Т','Ь','Б','Ю',
-      'BACKSPACE'
-    ]
-  ];
-
-  const rows =
-    language === 'RU'
-      ? rowsRU
-      : rowsEN;
-
-  rows.forEach(
-    row => {
-
-      const div =
-        document.createElement('div');
-
-      div.className =
-        'keyRow';
-
-      row.forEach(
-        k => {
-
-          div.appendChild(
-            createKey(k)
-          );
-
-        }
-      );
-
-      root.appendChild(div);
-
-    }
-  );
-
-  const bottom =
-    document.createElement('div');
-
-  bottom.className =
-    'keyRow';
-
-  [
-    'CTRL',
-    'WIN',
-    'ALT'
-  ].forEach(
-    k => {
-      const b = createKey(k);
-      b.classList.add('modifier');
-      bottom.appendChild(b);
-    }
-  );
-
-  const space = createKey('SPACE');
-  space.style.flex = '5';
-  bottom.appendChild(space);
-
-  const enter = createKey('ENTER');
-  enter.style.flex = '2';
-  enter.classList.add('green');
-  bottom.appendChild(enter);
-
-  root.appendChild(bottom);
-
-  const utilRow =
-    document.createElement('div');
-
-  utilRow.className =
-    'keyRow';
-
-  [
-    'TAB',
-    'DELETE',
-    'HOME',
-    'END',
-    'PAGEUP',
-    'PAGEDOWN'
-  ].forEach(
-    k => {
-      utilRow.appendChild(createKey(k));
-    }
-  );
-
-  root.appendChild(utilRow);
-
-  const arrows =
-    document.createElement('div');
-
-  arrows.className =
-    'keyRow';
-
-  [
-    'LEFT',
-    'DOWN',
-    'UP',
-    'RIGHT'
-  ].forEach(
-    k => {
-
-      arrows.appendChild(
-        createKey(k)
-      );
-
-    }
-  );
-
-  root.appendChild(arrows);
-
-  updateModifierButtons();
-
-}
-
-/* ============================================================
-   CREATE KEY
-   ============================================================ */
-
-function createKey(k) {
-
-  const b =
-    document.createElement('button');
-
-  b.className =
-    'key';
-
-  b.innerText =
-    k;
-
-  if(
-    ['CTRL','SHIFT','ALT','WIN']
-      .includes(k)
-  ) {
-
-    b.classList.add(
-      'modifier'
+  try{
+    scrollTrack.releasePointerCapture(
+      e.pointerId
     );
+  }catch(err){}
 
-    b.onclick =
-      () => toggleModifier(k);
+  scrollOffset = 0;
 
-  } else {
+  scrollThumb.classList.remove(
+    'active'
+  );
 
-    b.onclick =
-      () => pressNormalKey(k);
+  scrollThumb.style.transition =
+    'top .16s ease-out';
 
-  }
-
-  return b;
-
-}
-
-/* ============================================================
-   MODIFIERS
-   ============================================================ */
-
-function toggleModifier(k) {
-
-  modifiers[k] =
-    !modifiers[k];
-
-  updateModifierButtons();
-
-  syncModifiers();
+  scrollThumb.style.top =
+    '50%';
 
 }
 
-function updateModifierButtons() {
+function startScrollTimer(){
 
-  document
-    .querySelectorAll(
-      '.modifier'
-    )
-    .forEach(
-      b => {
+  stopScrollTimer();
 
-        const k =
-          b.innerText;
+  scrollTimer =
+    setInterval(
+      function(){
+
+        if(!scrollActive)
+          return;
 
         if(
-          modifiers[k]
+          Math.abs(scrollOffset) < 2
         )
-          b.classList.add('active');
-        else
-          b.classList.remove('active');
+          return;
 
-      }
+        let amount =
+          -Math.round(
+            scrollOffset / 18
+          );
+
+        if(amount === 0)
+          amount =
+            scrollOffset < 0
+              ? 1
+              : -1;
+
+        amount =
+          clamp(
+            amount,
+            -10,
+            10
+          );
+
+        fetch(
+          '/api/scroll?v=' +
+          amount,
+          {
+            keepalive:true
+          }
+        );
+
+      },
+      40
     );
 
 }
 
-/* ============================================================
-   SYNC MODIFIERS
-   ============================================================ */
+function stopScrollTimer(){
 
-async function syncModifiers() {
+  if(scrollTimer !== null){
 
-  await fetch(
-    '/api/modifiers?' +
-    'ctrl=' + (modifiers.CTRL ? 1 : 0) +
-    '&shift=' + (modifiers.SHIFT ? 1 : 0) +
-    '&alt=' + (modifiers.ALT ? 1 : 0) +
-    '&win=' + (modifiers.WIN ? 1 : 0)
-  );
+    clearInterval(
+      scrollTimer
+    );
+
+    scrollTimer = null;
+
+  }
 
 }
 
-/* ============================================================
-   CLEAR MODIFIERS
-   ============================================================ */
+scrollTrack.addEventListener(
+  'pointerdown',
+  scrollDown,
+  {passive:false}
+);
 
-async function clearModifiers() {
+scrollTrack.addEventListener(
+  'pointermove',
+  scrollMove,
+  {passive:false}
+);
 
-  modifiers.CTRL = false;
-  modifiers.SHIFT = false;
-  modifiers.ALT = false;
-  modifiers.WIN = false;
+scrollTrack.addEventListener(
+  'pointerup',
+  scrollUp,
+  {passive:false}
+);
 
-  updateModifierButtons();
+scrollTrack.addEventListener(
+  'pointercancel',
+  scrollUp,
+  {passive:false}
+);
 
-  await fetch(
-    '/api/modifiers/clear'
-  );
+window.addEventListener(
+  'blur',
+  function(){
 
+    if(scrollActive){
+
+      scrollActive = false;
+
+      stopScrollTimer();
+
+      scrollOffset = 0;
+
+      scrollThumb.classList.remove(
+        'active'
+      );
+
+      scrollThumb.style.transition =
+        'top .16s ease-out';
+
+      scrollThumb.style.top =
+        '50%';
+
+    }
+
+  }
+);
+
+function sendMouseMove(){
+const now=performance.now();
+if(now-lastMoveSend<12)return;
+if(Math.abs(moveQueueX)<1&&Math.abs(moveQueueY)<1)return;
+const x=Math.round(moveQueueX),y=Math.round(moveQueueY);
+moveQueueX-=x;moveQueueY-=y;lastMoveSend=now;
+fetch('/api/move?x='+x+'&y='+y,{keepalive:true});
+}
+function mouseDown(b){fetch('/api/mousedown?b='+b);}
+function mouseUp(b){fetch('/api/mouseup?b='+b);}
+
+function startLongPress(action){action();longPressTimer=setTimeout(()=>{longPressInterval=setInterval(action,80);},500);}
+function cancelLongPress(){if(longPressTimer){clearTimeout(longPressTimer);longPressTimer=null;}if(longPressInterval){clearInterval(longPressInterval);longPressInterval=null;}}
+
+function renderKeyboard(){
+const root=document.getElementById('keys');
+root.innerHTML='';
+const lettersEN=[
+['Q','W','E','R','T','Y','U','I','O','P'],
+['A','S','D','F','G','H','J','K','L'],
+['SHIFT','Z','X','C','V','B','N','M','BACKSPACE']
+];
+const lettersRU=[
+['Й','Ц','У','К','Е','Н','Г','Ш','Щ','З','Х','Ъ'],
+['Ф','Ы','В','А','П','Р','О','Л','Д','Ж','Э'],
+['SHIFT','Я','Ч','С','М','И','Т','Ь','Б','Ю','BACKSPACE']
+];
+const symbolsEN=[
+['1','2','3','4','5','6','7','8','9','0'],
+['!','@','#','$','%','^','&','*','(',')'],
+['=','_','+','[',']','{','}','\\','|']
+];
+const symbolsRU=[
+['1','2','3','4','5','6','7','8','9','0'],
+['!','"','№',';','%',':','?','*','(',')'],
+['=','-','+','Ё',',','.','/','\\','|']
+];
+const symbolsExtra=[
+['<','>','~','`','"',"'",':',';','?','/'],
+['€','£','¥','©','®','™','°','•','…','–'],
+['←','→','↑','↓','TAB','ESC','DEL','HOME','END']
+];
+let rows=[];
+if(keyboardLayer==='letters'||keyboardLayer==='shifted'){rows=(language==='RU')?lettersRU:lettersEN;}
+else if(keyboardLayer==='symbols'){rows=(language==='RU')?symbolsRU:symbolsEN;}
+else if(keyboardLayer==='symbols2'){rows=symbolsExtra;}
+
+rows.forEach(row=>{
+const div=document.createElement('div');div.className='keyRow';
+row.forEach(k=>{
+if(k==='BACKSPACE')div.appendChild(createBackspaceKey());
+else if(k==='SHIFT')div.appendChild(createShiftKey());
+else div.appendChild(createKey(k,keyboardLayer!=='letters'));
+});
+root.appendChild(div);
+});
+
+const funcRow=document.createElement('div');funcRow.className='keyRow';
+['ESC','TAB','DEL','HOME','END','PGUP','PGDN'].forEach(k=>{const b=createKey(k,false);b.classList.add('func');funcRow.appendChild(b);});
+root.appendChild(funcRow);
+
+const arrowRow=document.createElement('div');arrowRow.className='keyRow';
+['LEFT','UP','DOWN','RIGHT','F1','F2','F3','F4','F5'].forEach(k=>{const b=createKey(k,false);b.classList.add('func');arrowRow.appendChild(b);});
+root.appendChild(arrowRow);
+
+const bottom=document.createElement('div');bottom.className='keyRow';
+const layerBtn=document.createElement('button');layerBtn.className='key symbol';
+layerBtn.innerText=(keyboardLayer==='letters'||keyboardLayer==='shifted')?'?123':'ABC';
+layerBtn.onclick=()=>{if(keyboardLayer==='letters'||keyboardLayer==='shifted')keyboardLayer='symbols';else keyboardLayer='letters';renderKeyboard();};
+bottom.appendChild(layerBtn);
+const moreBtn=document.createElement('button');moreBtn.className='key symbol';
+moreBtn.innerText=(keyboardLayer==='symbols2')?'123':'#+=';
+moreBtn.onclick=()=>{if(keyboardLayer==='symbols2')keyboardLayer='symbols';else keyboardLayer='symbols2';renderKeyboard();};
+bottom.appendChild(moreBtn);
+bottom.appendChild(createKey(','));
+const space=document.createElement('button');space.className='key space';space.innerText='SPACE';space.onclick=()=>pressNormalKey('SPACE');bottom.appendChild(space);
+bottom.appendChild(createKey('.'));
+const micBtn=document.createElement('button');micBtn.className='key micKey';micBtn.innerText='🎤';micBtn.onclick=toggleVoice;bottom.appendChild(micBtn);
+const enter=document.createElement('button');enter.className='key enter';enter.innerText='ENTER';enter.onclick=()=>pressNormalKey('ENTER');bottom.appendChild(enter);
+root.appendChild(bottom);
+
+const modRow=document.createElement('div');modRow.className='keyRow';
+['CTRL','WIN','ALT'].forEach(k=>{const b=createKey(k);b.classList.add('modifier');modRow.appendChild(b);});
+const comboBtn=document.createElement('button');comboBtn.className='key';comboBtn.innerText='COMBO';comboBtn.style.flex='2';
+comboBtn.onclick=()=>{const c=prompt('Combo:','CTRL+C');if(c)quickCombo(c);};
+modRow.appendChild(comboBtn);
+root.appendChild(modRow);
+updateModifierButtons();
 }
 
-/* ============================================================
-   NORMAL KEY
-   ============================================================ */
-
-async function pressNormalKey(k) {
-
-  await fetch(
-    '/api/virtualkey?k=' +
-    encodeURIComponent(k) +
-    '&lang=' +
-    language +
-    '&ctrl=' +
-    (modifiers.CTRL ? 1 : 0) +
-    '&shift=' +
-    (modifiers.SHIFT ? 1 : 0) +
-    '&alt=' +
-    (modifiers.ALT ? 1 : 0) +
-    '&win=' +
-    (modifiers.WIN ? 1 : 0)
-  );
-
-  /*
-    One-shot modifiers:
-    after a normal key is pressed,
-    modifiers are cleared.
-  */
-
-  modifiers.CTRL = false;
-  modifiers.SHIFT = false;
-  modifiers.ALT = false;
-  modifiers.WIN = false;
-
-  updateModifierButtons();
-
+function createKey(k,isSymbol){
+const b=document.createElement('button');b.className='key';
+if(isSymbol)b.classList.add('symbol');
+b.innerText=k;
+if(['CTRL','SHIFT','ALT','WIN'].includes(k)){b.classList.add('modifier');b.onclick=()=>toggleModifier(k);}
+else{b.onclick=()=>pressNormalKey(k);}
+return b;
+}
+function createShiftKey(){
+const b=document.createElement('button');b.className='key modifier';b.innerText='⇧';b.style.flex='1.5';
+if(keyboardLayer==='shifted')b.classList.add('active');
+b.onclick=()=>{if(keyboardLayer==='letters')keyboardLayer='shifted';else keyboardLayer='letters';renderKeyboard();};
+return b;
+}
+function createBackspaceKey(){
+const b=document.createElement('button');b.className='key backspace';b.innerText='⌫';b.style.flex='1.5';
+const doBs=()=>pressNormalKey('BACKSPACE');
+b.onpointerdown=(e)=>{e.preventDefault();startLongPress(doBs);};
+b.onpointerup=()=>cancelLongPress();b.onpointercancel=()=>cancelLongPress();b.onpointerleave=()=>cancelLongPress();
+return b;
 }
 
-/* ============================================================
-   QUICK COMBO
-   ============================================================ */
+function toggleModifier(k){modifiers[k]=!modifiers[k];updateModifierButtons();syncModifiers();}
+function updateModifierButtons(){document.querySelectorAll('.modifier').forEach(b=>{const k=b.innerText;if(modifiers[k])b.classList.add('active');else b.classList.remove('active');});}
+async function syncModifiers(){await fetch('/api/modifiers?ctrl='+(modifiers.CTRL?1:0)+'&shift='+(modifiers.SHIFT?1:0)+'&alt='+(modifiers.ALT?1:0)+'&win='+(modifiers.WIN?1:0));}
+async function clearModifiers(){modifiers.CTRL=modifiers.SHIFT=modifiers.ALT=modifiers.WIN=false;updateModifierButtons();await fetch('/api/modifiers/clear');}
 
-async function quickCombo(combo) {
+async function pressNormalKey(k){
+const shifted=(keyboardLayer==='shifted')||modifiers.SHIFT;
+await fetch('/api/virtualkey?k='+encodeURIComponent(k)+'&lang='+language+'&ctrl='+(modifiers.CTRL?1:0)+'&shift='+(shifted?1:0)+'&alt='+(modifiers.ALT?1:0)+'&win='+(modifiers.WIN?1:0));
+if(keyboardLayer==='shifted'){keyboardLayer='letters';renderKeyboard();}
+modifiers.CTRL=modifiers.SHIFT=modifiers.ALT=modifiers.WIN=false;
+updateModifierButtons();
+}
+async function quickCombo(combo){await fetch('/api/combo?c='+encodeURIComponent(combo));}
+function toggleKeyboard(){document.getElementById('keyboard').classList.toggle('open');}
+function closePanel(){document.getElementById('panel').style.display='none';}
 
-  await fetch(
-    '/api/combo?c=' +
-    encodeURIComponent(combo)
-  );
-
+async function openMacros(){
+  document.getElementById('panel').style.display='flex';
+  document.getElementById('panelTitle').innerText='MACROS';
+  await loadMacros();
 }
 
-/* ============================================================
-   KEYBOARD PANEL
-   ============================================================ */
-
-function toggleKeyboard() {
-
-  document
-    .getElementById('keyboard')
-    .classList.toggle('open');
-
-}
-
-/* ============================================================
-   PANEL
-   ============================================================ */
-
-function closePanel() {
-
-  document
-    .getElementById('panel')
-    .style.display = 'none';
-
-}
-
-/* ============================================================
-   MACROS
-   ============================================================ */
-
-async function openMacros() {
-
-  document
-    .getElementById('panel')
-    .style.display = 'flex';
-
-  document
-    .getElementById('panelTitle')
-    .innerText = 'MACROS';
-
-  loadMacros();
-
-}
-
-async function loadMacros() {
-
-  const body =
-    document.getElementById('panelBody');
-
-  const r =
-    await fetch('/api/macros');
-
-  const data =
-    await r.json();
-
-  let html = `
-
-    <div class="card">
-
-      <div class="cardTitle">
-        MACRO MANAGER
-      </div>
-
-      <div class="actionRow">
-
-        <button
-          class="green"
-          onclick="createMacro()">
-          + NEW MACRO
-        </button>
-
-      </div>
-
-      <div class="small">
-
-        Создавай макросы из отдельных действий.
-        Не требуется запоминать синтаксис.
-
-      </div>
-
-    </div>
-
-  `;
-
-  data.macros.forEach(
-    (m,i) => {
-
-      html += `
-
-        <div class="macroRow">
-
-          <button
-            class="macroRun"
-            onclick="runMacro(${i})">
-
-            ▶ ${escapeHTML(m.name)}
-
-          </button>
-
-          <button
-            onclick="editMacro(${i})">
-            EDIT
-          </button>
-
-          <button
-            class="red"
-            onclick="deleteMacro(${i})">
-            ✕
-          </button>
-
+async function loadMacros(){
+  const body=document.getElementById('panelBody');
+  try{
+    const r=await fetch('/api/macros',{cache:'no-store'});
+    const data=await r.json();
+    let html=`
+      <div class="card">
+        <div class="cardTitle">MACROS</div>
+        <div class="actionRow">
+          <button class="green" onclick="createMacro()">+ NEW MACRO</button>
+          <button class="red" onclick="stopMacro()">STOP</button>
         </div>
+        <div class="small">
+          Макросы сохраняются во Flash. Можно запускать, редактировать,
+          удалять и менять порядок действий.
+        </div>
+      </div>`;
 
-      `;
+    data.macros.forEach((m,i)=>{
+      html+=`<div class="macroRow">
+        <button class="macroRun" onclick="runMacro(${i})">▶ ${escapeHTML(m.name)}</button>
+        <button onclick="editMacro(${i})">✎</button>
+        <button class="red" onclick="deleteMacro(${i})">✕</button>
+      </div>`;
+    });
 
-    }
-  );
-
-  body.innerHTML =
-    html;
-
+    body.innerHTML=html;
+  }catch(e){
+    body.innerHTML='<div class="card"><div class="small">Ошибка загрузки макросов.</div></div>';
+  }
 }
 
-/* ============================================================
-   MACRO EDITOR
-   ============================================================ */
+function createMacro(){openMacroEditor(-1,'New Macro','');}
 
-async function createMacro() {
-
-  openMacroEditor(
-    -1,
-    'New Macro',
-    ''
-  );
-
+async function editMacro(id){
+  const r=await fetch('/api/macro?id='+id,{cache:'no-store'});
+  if(!r.ok){alert('Ошибка открытия макроса');return;}
+  const m=await r.json();
+  openMacroEditor(id,m.name,m.data);
 }
 
-async function editMacro(id) {
+function openMacroEditor(id,name,data){
+  const body=document.getElementById('panelBody');
+  window.editorActions=parseActions(data);
 
-  const r =
-    await fetch(
-      '/api/macro?id=' + id
-    );
-
-  const m =
-    await r.json();
-
-  openMacroEditor(
-    id,
-    m.name,
-    m.data
-  );
-
-}
-
-/* ============================================================
-   MACRO EDITOR UI
-   ============================================================ */
-
-function openMacroEditor(
-  id,
-  name,
-  data
-) {
-
-  const body =
-    document.getElementById(
-      'panelBody'
-    );
-
-  let actions =
-    parseActions(data);
-
-  let html = `
-
+  body.innerHTML=`
     <div class="card">
-
-      <div class="cardTitle">
-        MACRO
-      </div>
-
-      <label>
-        Name
-      </label>
-
-      <input
-        id="macroName"
-        value="${escapeHTML(name)}">
-
+      <div class="cardTitle">MACRO</div>
+      <label>Name</label>
+      <input id="macroName" maxlength="40" value="${escapeHTML(name)}">
     </div>
-
     <div class="card">
-
-      <div class="cardTitle">
-        ACTIONS
-      </div>
-
+      <div class="cardTitle">ACTIONS</div>
       <div id="actions"></div>
-
       <div class="grid">
-
-        <button
-          class="blue"
-          onclick="addAction('KEY')">
-          + KEY
-        </button>
-
-        <button
-          class="blue"
-          onclick="addAction('COMBO')">
-          + COMBO
-        </button>
-
-        <button
-          class="blue"
-          onclick="addAction('TEXT')">
-          + TEXT
-        </button>
-
-        <button
-          class="blue"
-          onclick="addAction('WAIT')">
-          + DELAY
-        </button>
-
-        <button
-          class="blue"
-          onclick="addAction('MOVE')">
-          + MOUSE
-        </button>
-
-        <button
-          class="blue"
-          onclick="addAction('SCROLL')">
-          + SCROLL
-        </button>
-
+        <button class="blue" onclick="addAction('KEY')">+ KEY</button>
+        <button class="blue" onclick="addAction('COMBO')">+ COMBO</button>
+        <button class="blue" onclick="addAction('TEXT')">+ TEXT</button>
+        <button class="blue" onclick="addAction('WAIT')">+ DELAY</button>
+        <button class="blue" onclick="addAction('MOVE')">+ MOUSE</button>
+        <button class="blue" onclick="addAction('SCROLL')">+ SCROLL</button>
+        <button class="blue" onclick="addAction('CLICK')">+ CLICK</button>
       </div>
-
     </div>
-
     <div class="card">
-
-      <button
-        class="green"
-        onclick="saveMacro(${id})">
-        SAVE MACRO
-      </button>
-
-      <button
-        onclick="loadMacros()">
-        CANCEL
-      </button>
-
-    </div>
-
-  `;
-
-  body.innerHTML =
-    html;
-
-  window.editorActions =
-    actions;
+      <button class="green" style="width:100%;margin-bottom:6px" onclick="saveMacro(${id})">SAVE MACRO</button>
+      <button style="width:100%" onclick="loadMacros()">CANCEL</button>
+    </div>`;
 
   renderActions();
-
 }
 
-/* ============================================================
-   ACTION PARSER
-   ============================================================ */
-
-function parseActions(data) {
-
-  if(!data)
-    return [];
-
-  return data
-    .split('\n')
-    .map(
-      x => x.trim()
-    )
-    .filter(
-      x => x.length
-    )
-    .map(
-      x => {
-
-        if(
-          x.startsWith('WAIT:')
-        )
-          return {
-            type:'WAIT',
-            value:x.substring(5)
-          };
-
-        if(
-          x.startsWith('TYPE:')
-        )
-          return {
-            type:'TEXT',
-            value:x.substring(5)
-          };
-
-        if(
-          x.startsWith('MOVE:')
-        )
-          return {
-            type:'MOVE',
-            value:x.substring(5)
-          };
-
-        if(
-          x.startsWith('SCROLL:')
-        )
-          return {
-            type:'SCROLL',
-            value:x.substring(7)
-          };
-
-        if(
-          x.startsWith('KEY:')
-        )
-          return {
-            type:'KEY',
-            value:x.substring(4)
-          };
-
-        if(
-          x.includes('+')
-        )
-          return {
-            type:'COMBO',
-            value:x
-          };
-
-        return {
-          type:'KEY',
-          value:x
-        };
-
-      }
-    );
-
-}
-
-/* ============================================================
-   ACTION RENDER
-   ============================================================ */
-
-function renderActions() {
-
-  const root =
-    document.getElementById(
-      'actions'
-    );
-
-  root.innerHTML = '';
-
-  window.editorActions
-    .forEach(
-      (a,i) => {
-
-        const div =
-          document.createElement(
-            'div'
-          );
-
-        div.className =
-          'actionItem';
-
-        div.innerHTML = `
-
-          <div class="actionHeader">
-
-            <span>
-              ${i+1}. ${a.type}
-            </span>
-
-            <div class="actionButtons">
-
-              <button
-                onclick="moveAction(${i},-1)">
-                ↑
-              </button>
-
-              <button
-                onclick="moveAction(${i},1)">
-                ↓
-              </button>
-
-              <button
-                onclick="editAction(${i})">
-                ✎
-              </button>
-
-              <button
-                class="red"
-                onclick="deleteAction(${i})">
-                ✕
-              </button>
-
-            </div>
-
-          </div>
-
-          <div class="small">
-            ${escapeHTML(a.value)}
-          </div>
-
-        `;
-
-        root.appendChild(div);
-
-      }
-    );
-
-}
-
-/* ============================================================
-   ADD ACTION
-   ============================================================ */
-
-function addAction(type) {
-
-  let value = '';
-
-  if(type === 'KEY')
-    value = 'ENTER';
-
-  if(type === 'COMBO')
-    value = 'CTRL+C';
-
-  if(type === 'TEXT')
-    value = 'Hello';
-
-  if(type === 'WAIT')
-    value = '500';
-
-  if(type === 'MOVE')
-    value = '100,0';
-
-  if(type === 'SCROLL')
-    value = '-3';
-
-  window.editorActions.push({
-    type:type,
-    value:value
+function parseActions(data){
+  if(!data)return[];
+  return data.split('\n').map(x=>x.trim()).filter(Boolean).map(x=>{
+    if(x.startsWith('WAIT:'))return{type:'WAIT',value:x.substring(5)};
+    if(x.startsWith('TYPE_EN:'))return{type:'TEXT_EN',value:x.substring(8)};
+    if(x.startsWith('TYPE_RU:'))return{type:'TEXT_RU',value:x.substring(8)};
+    if(x.startsWith('TYPE_EN:'))return{type:'TEXT',value:x.substring(5)};
+    if(x.startsWith('MOVE:'))return{type:'MOVE',value:x.substring(5)};
+    if(x.startsWith('SCROLL:'))return{type:'SCROLL',value:x.substring(7)};
+    if(x.startsWith('KEY:'))return{type:'KEY',value:x.substring(4)};
+    if(x==='LMB'||x==='RMB'||x==='MMB')return{type:'CLICK',value:x};
+    if(x.includes('+'))return{type:'COMBO',value:x};
+    return{type:'KEY',value:x};
   });
+}
 
+function renderActions(){
+  const root=document.getElementById('actions');
+  root.innerHTML='';
+  window.editorActions.forEach((a,i)=>{
+    const div=document.createElement('div');
+    div.className='actionItem';
+    div.innerHTML=`<div class="actionHeader"><span>${i+1}. ${escapeHTML(a.type)}</span><div class="actionButtons">
+      <button onclick="moveAction(${i},-1)">↑</button>
+      <button onclick="moveAction(${i},1)">↓</button>
+      <button onclick="editAction(${i})">✎</button>
+      <button class="red" onclick="deleteAction(${i})">✕</button>
+    </div></div><div class="small">${escapeHTML(a.value)}</div>`;
+    root.appendChild(div);
+  });
+}
+
+function addAction(type){
+  let v='';
+  if(type==='KEY')v='ENTER';
+  if(type==='COMBO')v='CTRL+C';
+  if(type==='TEXT')v='Hello';
+  if(type==='WAIT')v='500';
+  if(type==='MOVE')v='100,0';
+  if(type==='SCROLL')v='-3';
+  if(type==='CLICK')v='LMB';
+  window.editorActions.push({type:type,value:v});
   renderActions();
-
 }
 
-/* ============================================================
-   EDIT ACTION
-   ============================================================ */
-
-function editAction(i) {
-
-  const a =
-    window.editorActions[i];
-
-  let value =
-    prompt(
-      'Action value:',
-      a.value
-    );
-
-  if(value === null)
-    return;
-
-  a.value =
-    value;
-
+function editAction(i){
+  const a=window.editorActions[i];
+  const v=prompt('Action value:',a.value);
+  if(v===null)return;
+  a.value=v;
   renderActions();
-
 }
 
-/* ============================================================
-   DELETE ACTION
-   ============================================================ */
+function deleteAction(i){window.editorActions.splice(i,1);renderActions();}
 
-function deleteAction(i) {
-
-  window.editorActions
-    .splice(i,1);
-
+function moveAction(i,d){
+  const n=i+d;
+  if(n<0||n>=window.editorActions.length)return;
+  const t=window.editorActions[i];
+  window.editorActions[i]=window.editorActions[n];
+  window.editorActions[n]=t;
   renderActions();
-
 }
 
-/* ============================================================
-   MOVE ACTION
-   ============================================================ */
+async function saveMacro(id){
+  const name=document.getElementById('macroName').value.trim();
+  if(!name){alert('Введите имя макроса');return;}
 
-function moveAction(i,direction) {
+  const data=window.editorActions.map(a=>{
+    if(a.type==='WAIT')return'WAIT:'+a.value;
+    if(a.type==='TEXT_EN')return'TYPE_EN:'+a.value;
+    if(a.type==='TEXT_RU')return'TYPE_RU:'+a.value;
+    if(a.type==='TEXT')return'TYPE_EN:'+a.value;
+    if(a.type==='MOVE')return'MOVE:'+a.value;
+    if(a.type==='SCROLL')return'SCROLL:'+a.value;
+    if(a.type==='KEY')return'KEY:'+a.value;
+    if(a.type==='CLICK')return a.value;
+    if(a.type==='COMBO')return a.value;
+    return'';
+  }).join('\n');
 
-  const n =
-    i + direction;
-
-  if(n < 0 ||
-     n >= window.editorActions.length)
-    return;
-
-  const tmp =
-    window.editorActions[i];
-
-  window.editorActions[i] =
-    window.editorActions[n];
-
-  window.editorActions[n] =
-    tmp;
-
-  renderActions();
-
+  const body='id='+encodeURIComponent(id)+'&name='+encodeURIComponent(name)+'&data='+encodeURIComponent(data);
+  const r=await fetch('/api/macro/save',{
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+    body
+  });
+  if(!r.ok){alert('Ошибка сохранения макроса');return;}
+  await loadMacros();
 }
 
-/* ============================================================
-   SAVE MACRO
-   ============================================================ */
-
-async function saveMacro(id) {
-
-  const name =
-    document.getElementById(
-      'macroName'
-    ).value;
-
-  const data =
-    window.editorActions
-      .map(
-        a => {
-
-          if(a.type === 'WAIT')
-            return 'WAIT:' + a.value;
-
-          if(a.type === 'TEXT')
-            return 'TYPE:' + a.value;
-
-          if(a.type === 'MOVE')
-            return 'MOVE:' + a.value;
-
-          if(a.type === 'SCROLL')
-            return 'SCROLL:' + a.value;
-
-          if(a.type === 'KEY')
-            return 'KEY:' + a.value;
-
-          if(a.type === 'COMBO')
-            return a.value;
-
-          return '';
-
-        }
-      )
-      .join('\n');
-
-  await fetch(
-    '/api/macro/save?id=' +
-    id +
-    '&name=' +
-    encodeURIComponent(name) +
-    '&data=' +
-    encodeURIComponent(data)
-  );
-
-  loadMacros();
-
+async function runMacro(i){
+  const r=await fetch('/api/macro/run?id='+i);
+  if(!r.ok)alert('Не удалось запустить макрос');
 }
 
-/* ============================================================
-   RUN / DELETE
-   ============================================================ */
+async function stopMacro(){await fetch('/api/macro/stop');}
 
-async function runMacro(i) {
-
-  await fetch(
-    '/api/macro/run?id=' + i
-  );
-
+async function deleteMacro(i){
+  if(!confirm('Удалить макрос?'))return;
+  await fetch('/api/macro/delete?id='+i);
+  await loadMacros();
 }
 
-async function deleteMacro(i) {
-
-  if(
-    !confirm(
-      'Delete this macro?'
-    )
-  )
-    return;
-
-  await fetch(
-    '/api/macro/delete?id=' +
-    i
-  );
-
-  loadMacros();
-
+async function openSettings(){
+document.getElementById('panel').style.display='flex';document.getElementById('panelTitle').innerText='SETTINGS';
+const body=document.getElementById('panelBody');
+body.innerHTML='<div class="card"><div class="cardTitle">WI-FI</div><label>SSID</label><input id="ssid"><label>Password</label><input id="password" type="password"><button class="green" onclick="saveWiFi()">SAVE & RESTART</button></div><div class="card"><div class="cardTitle">MOUSE</div><label>Sensitivity</label><input id="sensitivity" type="range" min="1" max="6" onchange="saveSensitivity(this.value)"></div><div class="card"><div class="cardTitle">QUICK</div><div class="grid"><button onclick="quickCombo(\'WIN+R\')">WIN+R</button><button onclick="quickCombo(\'WIN+E\')">WIN+E</button><button onclick="quickCombo(\'ALT+F4\')">ALT+F4</button><button onclick="quickCombo(\'CTRL+SHIFT+ESC\')">TASKMGR</button><button onclick="quickCombo(\'WIN+L\')">LOCK</button><button onclick="quickCombo(\'WIN+D\')">DESKTOP</button></div></div><div class="card"><div class="cardTitle">DEVICE</div><button class="red" onclick="factoryReset()">FACTORY RESET</button></div>';
+const r=await fetch('/api/settings');const s=await r.json();
+document.getElementById('ssid').value=s.ssid;document.getElementById('password').value=s.password;document.getElementById('sensitivity').value=s.sensitivity;
 }
+async function saveSensitivity(v){await fetch('/api/sensitivity?v='+v);}
+async function saveWiFi(){const s=document.getElementById('ssid').value;const p=document.getElementById('password').value;await fetch('/api/wifi?ssid='+encodeURIComponent(s)+'&pass='+encodeURIComponent(p));alert('Saved.');}
+async function factoryReset(){if(!confirm('Reset all?'))return;await fetch('/api/reset');}
+function escapeHTML(s){return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#039;");}
 
-/* ============================================================
-   SETTINGS
-   ============================================================ */
+function escapeHTMLAttr(s){return escapeHTML(s);}
 
-async function openSettings() {
-
-  document
-    .getElementById('panel')
-    .style.display = 'flex';
-
-  document
-    .getElementById('panelTitle')
-    .innerText = 'SETTINGS';
-
-  const body =
-    document.getElementById(
-      'panelBody'
-    );
-
-  body.innerHTML = `
-
-    <div class="card">
-
-      <div class="cardTitle">
-        WI-FI
-      </div>
-
-      <label>
-        SSID
-      </label>
-
-      <input id="ssid">
-
-      <label>
-        Password
-      </label>
-
-      <input
-        id="password"
-        type="password">
-
-      <button
-        class="green"
-        onclick="saveWiFi()">
-        SAVE & RESTART
-      </button>
-
-    </div>
-
-    <div class="card">
-
-      <div class="cardTitle">
-        MOUSE
-      </div>
-
-      <label>
-        Sensitivity
-      </label>
-
-      <input
-        id="sensitivity"
-        type="range"
-        min="1"
-        max="6">
-
-    </div>
-
-    <div class="card">
-
-      <div class="cardTitle">
-        QUICK ACTIONS
-      </div>
-
-      <div class="grid">
-
-        <button onclick="quickCombo('WIN+R')">
-          WIN+R
-        </button>
-
-        <button onclick="quickCombo('WIN+E')">
-          WIN+E
-        </button>
-
-        <button onclick="quickCombo('ALT+F4')">
-          ALT+F4
-        </button>
-
-        <button onclick="quickCombo('CTRL+SHIFT+ESC')">
-          TASK MANAGER
-        </button>
-
-        <button onclick="quickCombo('CTRL+ALT+DELETE')">
-          CTRL+ALT+DEL
-        </button>
-
-        <button onclick="quickCombo('CTRL+C')">
-          CTRL+C
-        </button>
-
-        <button onclick="quickCombo('CTRL+V')">
-          CTRL+V
-        </button>
-
-      </div>
-
-    </div>
-
-    <div class="card">
-
-      <div class="cardTitle">
-        LANGUAGE
-      </div>
-
-      <button
-        class="blue"
-        onclick="toggleLanguage()">
-        SHIFT + ALT — ${language}
-      </button>
-
-      <div class="small">
-
-        Переключение отправляется одновременно
-        на ПК и в интерфейсе ESP32.
-
-      </div>
-
-    </div>
-
-    <div class="card">
-
-      <div class="cardTitle">
-        DEVICE
-      </div>
-
-      <button
-        class="red"
-        onclick="factoryReset()">
-        FACTORY RESET
-      </button>
-
-    </div>
-
-  `;
-
-  const r =
-    await fetch(
-      '/api/settings'
-    );
-
-  const s =
-    await r.json();
-
-  document
-    .getElementById('ssid')
-    .value = s.ssid;
-
-  document
-    .getElementById('password')
-    .value = s.password;
-
-  document
-    .getElementById('sensitivity')
-    .value =
-      s.sensitivity;
-
-}
-
-/* ============================================================
-   SAVE WIFI
-   ============================================================ */
-
-async function saveWiFi() {
-
-  const ssid =
-    document.getElementById(
-      'ssid'
-    ).value;
-
-  const password =
-    document.getElementById(
-      'password'
-    ).value;
-
-  await fetch(
-    '/api/wifi?ssid=' +
-    encodeURIComponent(ssid) +
-    '&pass=' +
-    encodeURIComponent(password)
-  );
-
-  alert(
-    'Saved. ESP32 is restarting.'
-  );
-
-}
-
-/* ============================================================
-   RESET
-   ============================================================ */
-
-async function factoryReset() {
-
-  if(
-    !confirm(
-      'Reset all settings and macros?'
-    )
-  )
-    return;
-
-  await fetch(
-    '/api/reset'
-  );
-
-}
-
-/* ============================================================
-   ESCAPE
-   ============================================================ */
-
-function escapeHTML(s) {
-
-  return String(s)
-    .replaceAll('&','&amp;')
-    .replaceAll('<','&lt;')
-    .replaceAll('>','&gt;')
-    .replaceAll('"','&quot;')
-    .replaceAll("'","&#039;");
-
-}
-
-/* ============================================================
-   INIT
-   ============================================================ */
-
-renderKeyboard();
-
-updateLanguageUI();
-
+renderKeyboard();updateLanguageUI();initVoice();
 </script>
-
 </body>
 </html>
-
 )HTML";
 
 // ============================================================
@@ -2795,74 +1517,113 @@ void sendVirtualKey(
     win && !heldWin;
 
   if(ownCtrl)
-    Keyboard.press(
-      KEY_LEFT_CTRL
-    );
+    Keyboard.press(KEY_LEFT_CTRL);
 
   if(ownShift)
-    Keyboard.press(
-      KEY_LEFT_SHIFT
-    );
+    Keyboard.press(KEY_LEFT_SHIFT);
 
   if(ownAlt)
-    Keyboard.press(
-      KEY_LEFT_ALT
-    );
+    Keyboard.press(KEY_LEFT_ALT);
 
   if(ownWin)
-    Keyboard.press(
-      KEY_LEFT_GUI
-    );
+    Keyboard.press(KEY_LEFT_GUI);
+
+  delay(10);
 
   uint8_t usage = 0;
+  bool needExtraShift = false;
 
-  if(
-    lang == "RU" &&
-    key.length() > 0
-  ) {
-
-    usage =
-      russianUsage(key);
-
+  if(lang == "RU") {
+    // Russian Windows layout maps punctuation differently from US.
+    // In particular, comma/period must NOT use the physical comma/period
+    // usages 0x36/0x37, because those produce Б/Ю in RU layout.
+    if(key == ".") {
+      usage = 0x38;              // / key -> . in RU
+    }
+    else if(key == ",") {
+      usage = 0x38;              // / key
+      needExtraShift = true;     // Shift + / -> ,
+    }
+    else if(key == "?") {
+      usage = 0x24;              // 7 key
+      needExtraShift = true;
+    }
+    else if(key == "!") {
+      usage = 0x1E;              // 1 key
+      needExtraShift = true;
+    }
+    else if(key == ";") {
+      usage = 0x21;              // 4 key
+      needExtraShift = true;
+    }
+    else if(key == ":") {
+      usage = 0x23;              // 6 key
+      needExtraShift = true;
+    }
+    else {
+      usage = russianUsage(key);
+    }
   }
 
-  if(!usage)
+  if(!usage && key.length() == 1) {
+
+    char c =
+      key.charAt(0);
+
+    String baseKey =
+      key;
+
+    if(c == '!') { baseKey="1"; needExtraShift=true; }
+    else if(c == '@') { baseKey="2"; needExtraShift=true; }
+    else if(c == '#') { baseKey="3"; needExtraShift=true; }
+    else if(c == '$') { baseKey="4"; needExtraShift=true; }
+    else if(c == '%') { baseKey="5"; needExtraShift=true; }
+    else if(c == '^') { baseKey="6"; needExtraShift=true; }
+    else if(c == '&') { baseKey="7"; needExtraShift=true; }
+    else if(c == '*') { baseKey="8"; needExtraShift=true; }
+    else if(c == '(') { baseKey="9"; needExtraShift=true; }
+    else if(c == ')') { baseKey="0"; needExtraShift=true; }
+    else if(c == '_') { baseKey="-"; needExtraShift=true; }
+    else if(c == '+') { baseKey="="; needExtraShift=true; }
+    else if(c == '{') { baseKey="["; needExtraShift=true; }
+    else if(c == '}') { baseKey="]"; needExtraShift=true; }
+    else if(c == '|') { baseKey="\\"; needExtraShift=true; }
+    else if(c == ':') { baseKey=";"; needExtraShift=true; }
+    else if(c == '"') { baseKey="'"; needExtraShift=true; }
+    else if(c == '~') { baseKey="`"; needExtraShift=true; }
+    else if(c == '<') { baseKey=","; needExtraShift=true; }
+    else if(c == '>') { baseKey="."; needExtraShift=true; }
+    else if(c == '?') { baseKey="/"; needExtraShift=true; }
+
+    usage =
+      usageForKey(baseKey);
+
+  }
+  else if(!usage) {
+
     usage =
       usageForKey(key);
 
+  }
+
   if(usage) {
 
-    Keyboard.pressRaw(
-      usage
-    );
+    if(needExtraShift && !ownShift)
+      Keyboard.press(KEY_LEFT_SHIFT);
 
+    Keyboard.pressRaw(usage);
     delay(30);
+    Keyboard.releaseRaw(usage);
 
-    Keyboard.releaseRaw(
-      usage
-    );
+    if(needExtraShift && !ownShift)
+      Keyboard.release(KEY_LEFT_SHIFT);
 
   }
 
-  if(ownWin)
-    Keyboard.release(
-      KEY_LEFT_GUI
-    );
-
-  if(ownAlt)
-    Keyboard.release(
-      KEY_LEFT_ALT
-    );
-
-  if(ownShift)
-    Keyboard.release(
-      KEY_LEFT_SHIFT
-    );
-
-  if(ownCtrl)
-    Keyboard.release(
-      KEY_LEFT_CTRL
-    );
+  if(ownWin) Keyboard.release(KEY_LEFT_GUI);
+  if(ownAlt) Keyboard.release(KEY_LEFT_ALT);
+  if(ownShift) Keyboard.release(KEY_LEFT_SHIFT);
+  if(ownCtrl) Keyboard.release(KEY_LEFT_CTRL);
 
 }
 
@@ -2875,12 +1636,10 @@ void sendCombination(
 ) {
 
   combo.trim();
-  combo.replace(" ","");
+  combo.replace(" ", "");
 
-  uint8_t keys[8];
-
+  String parts[8];
   int count = 0;
-
   int start = 0;
 
   while(
@@ -2888,155 +1647,518 @@ void sendCombination(
     count < 8
   ) {
 
-    int pos =
-      combo.indexOf(
-        '+',
-        start
-      );
-
+    int pos = combo.indexOf('+', start);
     String p;
 
     if(pos < 0) {
-
-      p =
-        combo.substring(start);
-
-      start =
-        combo.length();
-
+      p = combo.substring(start);
+      start = combo.length();
     } else {
-
-      p =
-        combo.substring(
-          start,
-          pos
-        );
-
-      start =
-        pos + 1;
-
+      p = combo.substring(start, pos);
+      start = pos + 1;
     }
 
-    p.toUpperCase();
-
-    if(
-      p == "CTRL" ||
-      p == "CONTROL"
-    ) {
-
-      keys[count++] =
-        KEY_LEFT_CTRL;
-
-    }
-
-    else if(p == "SHIFT") {
-
-      keys[count++] =
-        KEY_LEFT_SHIFT;
-
-    }
-
-    else if(p == "ALT") {
-
-      keys[count++] =
-        KEY_LEFT_ALT;
-
-    }
-
-    else if(
-      p == "WIN" ||
-      p == "GUI" ||
-      p == "CMD"
-    ) {
-
-      keys[count++] =
-        KEY_LEFT_GUI;
-
-    }
-
-    else {
-
-      uint8_t u =
-        usageForKey(p);
-
-      if(u)
-        keys[count++] =
-          u;
-
-    }
-
+    p.trim();
+    if(p.length())
+      parts[count++] = p;
   }
 
   if(count == 0)
     return;
 
-  for(
-    int i=0;
-    i<count;
-    i++
-  ) {
+  // IMPORTANT: modifier constants such as KEY_LEFT_GUI are Arduino
+  // keycodes, not raw HID usage IDs. The old implementation passed
+  // them to pressRaw(), which could leave Windows in a bad HID state.
+  // Use Keyboard.press() for modifiers and pressRaw() only for the
+  // normal key usages.
+  bool ctrl=false, shift=false, alt=false, win=false;
+  uint8_t normal[8];
+  int normalCount=0;
 
-    Keyboard.pressRaw(
-      keys[i]
-    );
+  for(int i=0; i<count; i++) {
 
-    delay(15);
+    String p = parts[i];
+    p.toUpperCase();
 
+    if(p == "CTRL" || p == "CONTROL") {
+      if(!ctrl) Keyboard.press(KEY_LEFT_CTRL);
+      ctrl=true;
+    }
+    else if(p == "SHIFT") {
+      if(!shift) Keyboard.press(KEY_LEFT_SHIFT);
+      shift=true;
+    }
+    else if(p == "ALT") {
+      if(!alt) Keyboard.press(KEY_LEFT_ALT);
+      alt=true;
+    }
+    else if(p == "WIN" || p == "GUI" || p == "CMD") {
+      if(!win) Keyboard.press(KEY_LEFT_GUI);
+      win=true;
+    }
+    else {
+      uint8_t usage = usageForKey(p);
+      if(usage && normalCount < 8)
+        normal[normalCount++] = usage;
+    }
+  }
+
+  delay(35);
+
+  for(int i=0; i<normalCount; i++) {
+    Keyboard.pressRaw(normal[i]);
+    delay(35);
   }
 
   delay(70);
 
-  Keyboard.releaseAll();
+  for(int i=normalCount-1; i>=0; i--) {
+    Keyboard.releaseRaw(normal[i]);
+    delay(10);
+  }
 
+  // Release only the modifiers belonging to this combination.
+  // This is more deterministic than releaseAll() and prevents a
+  // following macro action from inheriting WIN/ALT/CTRL/SHIFT.
+  if(win)   Keyboard.release(KEY_LEFT_GUI);
+  if(alt)   Keyboard.release(KEY_LEFT_ALT);
+  if(shift) Keyboard.release(KEY_LEFT_SHIFT);
+  if(ctrl)  Keyboard.release(KEY_LEFT_CTRL);
+
+  heldCtrl=false;
+  heldShift=false;
+  heldAlt=false;
+  heldWin=false;
 }
 
 // ============================================================
 // TYPE TEXT
 // ============================================================
 
-void typeText(
-  String text
-) {
+void typeAsciiPhysical(String text) {
 
-  /*
-    ASCII is typed through the current
-    USB keyboard layout.
+  for(size_t i = 0; i < text.length(); i++) {
 
-    Russian text is handled separately
-    through physical RU key positions.
-  */
-
-  for(
-    size_t i=0;
-    i<text.length();
-    i++
-  ) {
-
-    char c =
-      text[i];
+    char c = text[i];
 
     if(c == '\r')
       continue;
 
-    if(c == '\n') {
+    uint8_t usage = 0;
+    bool needShift = false;
 
-      Keyboard.write(
-        KEY_RETURN
-      );
+    if(c >= 'a' && c <= 'z')
+      usage = 0x04 + (c - 'a');
 
-      continue;
-
+    else if(c >= 'A' && c <= 'Z') {
+      usage = 0x04 + (c - 'A');
+      needShift = true;
     }
 
-    Keyboard.write(
-      (uint8_t)c
-    );
+    else if(c >= '1' && c <= '9')
+      usage = 0x1E + (c - '1');
 
-    delay(3);
+    else if(c == '0')
+      usage = 0x27;
+
+    else if(c == ' ')
+      usage = 0x2C;
+
+    else if(c == '\n')
+      usage = 0x28;
+
+    else if(c == '\t')
+      usage = 0x2B;
+
+    else if(c == '-')
+      usage = 0x2D;
+
+    else if(c == '_') {
+      usage = 0x2D;
+      needShift = true;
+    }
+
+    else if(c == '=')
+      usage = 0x2E;
+
+    else if(c == '+') {
+      usage = 0x2E;
+      needShift = true;
+    }
+
+    else if(c == '[')
+      usage = 0x2F;
+
+    else if(c == '{') {
+      usage = 0x2F;
+      needShift = true;
+    }
+
+    else if(c == ']')
+      usage = 0x30;
+
+    else if(c == '}') {
+      usage = 0x30;
+      needShift = true;
+    }
+
+    else if(c == '\\')
+      usage = 0x31;
+
+    else if(c == '|') {
+      usage = 0x31;
+      needShift = true;
+    }
+
+    else if(c == ';')
+      usage = 0x33;
+
+    else if(c == ':') {
+      usage = 0x33;
+      needShift = true;
+    }
+
+    else if(c == '\'')
+      usage = 0x34;
+
+    else if(c == '"') {
+      usage = 0x34;
+      needShift = true;
+    }
+
+    else if(c == '`')
+      usage = 0x35;
+
+    else if(c == '~') {
+      usage = 0x35;
+      needShift = true;
+    }
+
+    else if(c == ',')
+      usage = 0x36;
+
+    else if(c == '<') {
+      usage = 0x36;
+      needShift = true;
+    }
+
+    else if(c == '.')
+      usage = 0x37;
+
+    else if(c == '>') {
+      usage = 0x37;
+      needShift = true;
+    }
+
+    else if(c == '/')
+      usage = 0x38;
+
+    else if(c == '?') {
+      usage = 0x38;
+      needShift = true;
+    }
+
+    else if(c == '!') {
+      usage = 0x1E;
+      needShift = true;
+    }
+
+    else if(c == '@') {
+      usage = 0x1F;
+      needShift = true;
+    }
+
+    else if(c == '#') {
+      usage = 0x20;
+      needShift = true;
+    }
+
+    else if(c == '$') {
+      usage = 0x21;
+      needShift = true;
+    }
+
+    else if(c == '%') {
+      usage = 0x22;
+      needShift = true;
+    }
+
+    else if(c == '^') {
+      usage = 0x23;
+      needShift = true;
+    }
+
+    else if(c == '&') {
+      usage = 0x24;
+      needShift = true;
+    }
+
+    else if(c == '*') {
+      usage = 0x25;
+      needShift = true;
+    }
+
+    else if(c == '(') {
+      usage = 0x26;
+      needShift = true;
+    }
+
+    else if(c == ')') {
+      usage = 0x27;
+      needShift = true;
+    }
+
+    if(!usage)
+      continue;
+
+    if(needShift)
+      Keyboard.press(KEY_LEFT_SHIFT);
+
+    Keyboard.pressRaw(usage);
+    delay(6);
+    Keyboard.releaseRaw(usage);
+
+    if(needShift)
+      Keyboard.release(KEY_LEFT_SHIFT);
+
+    delay(2);
+
+    if((i & 7) == 7) {
+      server.handleClient();
+      yield();
+    }
 
   }
 
 }
+
+uint8_t russianCodepointUsage(
+  uint32_t cp,
+  bool &uppercase
+) {
+
+  uppercase = false;
+
+  switch(cp) {
+
+    case 0x0410: uppercase=true; return 0x04;
+    case 0x0430: return 0x04;
+    case 0x0411: uppercase=true; return 0x36;
+    case 0x0431: return 0x36;
+    case 0x0412: uppercase=true; return 0x07;
+    case 0x0432: return 0x07;
+    case 0x0413: uppercase=true; return 0x18;
+    case 0x0433: return 0x18;
+    case 0x0414: uppercase=true; return 0x0F;
+    case 0x0434: return 0x0F;
+    case 0x0415: uppercase=true; return 0x17;
+    case 0x0435: return 0x17;
+    case 0x0401: uppercase=true; return 0x35;
+    case 0x0451: return 0x35;
+    case 0x0416: uppercase=true; return 0x33;
+    case 0x0436: return 0x33;
+    case 0x0417: uppercase=true; return 0x13;
+    case 0x0437: return 0x13;
+    case 0x0418: uppercase=true; return 0x05;
+    case 0x0438: return 0x05;
+    case 0x0419: uppercase=true; return 0x14;
+    case 0x0439: return 0x14;
+    case 0x041A: uppercase=true; return 0x15;
+    case 0x043A: return 0x15;
+    case 0x041B: uppercase=true; return 0x0E;
+    case 0x043B: return 0x0E;
+    case 0x041C: uppercase=true; return 0x19;
+    case 0x043C: return 0x19;
+    case 0x041D: uppercase=true; return 0x1C;
+    case 0x043D: return 0x1C;
+    case 0x041E: uppercase=true; return 0x0D;
+    case 0x043E: return 0x0D;
+    case 0x041F: uppercase=true; return 0x0A;
+    case 0x043F: return 0x0A;
+    case 0x0420: uppercase=true; return 0x0B;
+    case 0x0440: return 0x0B;
+    case 0x0421: uppercase=true; return 0x06;
+    case 0x0441: return 0x06;
+    case 0x0422: uppercase=true; return 0x11;
+    case 0x0442: return 0x11;
+    case 0x0423: uppercase=true; return 0x08;
+    case 0x0443: return 0x08;
+    case 0x0424: uppercase=true; return 0x09;
+    case 0x0444: return 0x09;
+    case 0x0425: uppercase=true; return 0x2F;
+    case 0x0445: return 0x2F;
+    case 0x0426: uppercase=true; return 0x1A;
+    case 0x0446: return 0x1A;
+    case 0x0427: uppercase=true; return 0x1B;
+    case 0x0447: return 0x1B;
+    case 0x0428: uppercase=true; return 0x0C;
+    case 0x0448: return 0x0C;
+    case 0x0429: uppercase=true; return 0x12;
+    case 0x0449: return 0x12;
+    case 0x042A: uppercase=true; return 0x30;
+    case 0x044A: return 0x30;
+    case 0x042B: uppercase=true; return 0x16;
+    case 0x044B: return 0x16;
+    case 0x042C: uppercase=true; return 0x10;
+    case 0x044C: return 0x10;
+    case 0x042D: uppercase=true; return 0x34;
+    case 0x044D: return 0x34;
+    case 0x042E: uppercase=true; return 0x37;
+    case 0x044E: return 0x37;
+    case 0x042F: uppercase=true; return 0x1D;
+    case 0x044F: return 0x1D;
+
+    default: return 0;
+
+  }
+
+}
+
+void typeTextRU(String text) {
+
+  const uint8_t* data =
+    (const uint8_t*)text.c_str();
+
+  size_t i = 0;
+  const size_t len = text.length();
+
+  while(i < len) {
+
+    uint8_t b = data[i];
+
+    if(b < 0x80) {
+
+      char c = (char)b;
+
+      if(c == '\r') {
+        i++;
+        continue;
+      }
+
+      if(c == '\n') {
+        Keyboard.write(KEY_RETURN);
+        i++;
+        continue;
+      }
+
+      if(c == '\t') {
+        Keyboard.pressRaw(0x2B);
+        delay(8);
+        Keyboard.releaseRaw(0x2B);
+        i++;
+        continue;
+      }
+
+      String one;
+      one += c;
+      typeAsciiPhysical(one);
+
+      i++;
+      continue;
+
+    }
+
+    uint32_t cp = 0;
+    int bytes = 0;
+
+    if((b & 0xE0) == 0xC0 && i + 1 < len) {
+      cp =
+        ((uint32_t)(b & 0x1F) << 6) |
+        (data[i+1] & 0x3F);
+      bytes = 2;
+    }
+    else if((b & 0xF0) == 0xE0 && i + 2 < len) {
+      cp =
+        ((uint32_t)(b & 0x0F) << 12) |
+        ((uint32_t)(data[i+1] & 0x3F) << 6) |
+        (data[i+2] & 0x3F);
+      bytes = 3;
+    }
+    else {
+      i++;
+      continue;
+    }
+
+    bool upper = false;
+    uint8_t usage =
+      russianCodepointUsage(cp, upper);
+
+    if(usage) {
+
+      if(upper)
+        Keyboard.press(KEY_LEFT_SHIFT);
+
+      Keyboard.pressRaw(usage);
+      delay(7);
+      Keyboard.releaseRaw(usage);
+
+      if(upper)
+        Keyboard.release(KEY_LEFT_SHIFT);
+
+    }
+
+    i += bytes;
+    delay(2);
+
+    if((i & 7) == 0) {
+      server.handleClient();
+      yield();
+    }
+
+  }
+
+}
+
+void typeText(
+  String text,
+  String requestedLang
+) {
+
+  requestedLang.toUpperCase();
+
+  bool wantRU =
+    requestedLang == "RU";
+
+  bool originalRU =
+    russianMode;
+
+  if(wantRU != russianMode) {
+
+    switchLanguagePC();
+
+    russianMode = wantRU;
+
+    delay(80);
+
+  }
+
+  if(wantRU)
+    typeTextRU(text);
+  else
+    typeAsciiPhysical(text);
+
+  if(originalRU != russianMode) {
+
+    switchLanguagePC();
+
+    russianMode = originalRU;
+
+    delay(80);
+
+  }
+
+}
+
+void typeText(String text) {
+  typeText(
+    text,
+    russianMode ? "RU" : "EN"
+  );
+}
+
+// ============================================================
+// WINDOWS COMMAND TYPING
+// ============================================================
 
 // ============================================================
 // MACRO ACTION
@@ -3047,218 +2169,108 @@ void executeAction(
 ) {
 
   action.trim();
+  if(!action.length())return;
 
-  if(!action.length())
-    return;
-
-  String upper =
-    action;
-
+  String upper=action;
   upper.toUpperCase();
 
-  if(
-    upper.startsWith("WAIT:")
-  ) {
+  // WAIT is handled by the non-blocking macro scheduler in
+  // processMacroStep(). Do not consume it here.
+  if(upper.startsWith("WAIT:"))return;
 
-    int ms =
-      action.substring(5)
-        .toInt();
-
-    ms =
-      constrain(
-        ms,
-        0,
-        30000
-      );
-
-    delay(ms);
-
+  if(upper.startsWith("TYPE_EN:")){
+    typeText(action.substring(8),"EN");
     return;
-
   }
 
-  if(
-    upper.startsWith("TYPE:")
-  ) {
-
-    typeText(
-      action.substring(5)
-    );
-
+  if(upper.startsWith("TYPE_RU:")){
+    typeText(action.substring(8),"RU");
     return;
-
   }
 
-  if(
-    upper.startsWith("KEY:")
-  ) {
-
-    sendVirtualKey(
-      action.substring(4),
-      "EN",
-      false,
-      false,
-      false,
-      false
-    );
-
+  if(upper.startsWith("TYPE_EN:")){
+    typeText(action.substring(5));
     return;
-
   }
 
-  if(
-    upper == "LMB"
-  ) {
-
-    Mouse.click(
-      MOUSE_LEFT
-    );
-
-    return;
-
-  }
-
-  if(
-    upper == "RMB"
-  ) {
-
-    Mouse.click(
-      MOUSE_RIGHT
-    );
-
-    return;
-
-  }
-
-  if(
-    upper == "MMB"
-  ) {
-
-    Mouse.click(
-      MOUSE_MIDDLE
-    );
-
-    return;
-
-  }
-
-  if(
-    upper.startsWith("MOVE:")
-  ) {
-
-    String v =
-      action.substring(5);
-
-    int comma =
-      v.indexOf(',');
-
-    if(comma >= 0) {
-
-      int x =
-        v.substring(
-          0,
-          comma
-        ).toInt();
-
-      int y =
-        v.substring(
-          comma + 1
-        ).toInt();
-
-      x *=
-        mouseSensitivity;
-
-      y *=
-        mouseSensitivity;
-
-      while(
-        x != 0 ||
-        y != 0
-      ) {
-
-        int8_t dx =
-          constrain(
-            x,
-            -127,
-            127
-          );
-
-        int8_t dy =
-          constrain(
-            y,
-            -127,
-            127
-          );
-
-        Mouse.move(
-          dx,
-          dy
-        );
-
-        x -= dx;
-        y -= dy;
-
-      }
-
+  if(upper.startsWith("KEY:")){
+    String k = action.substring(4);
+    k.trim();
+    // Macro special keys are always sent as raw HID usages with a
+    // clean modifier state. This fixes ENTER and similar keys.
+    releaseAllModifiers();
+    uint8_t u = usageForKey(k);
+    if(u) {
+      Keyboard.pressRaw(u);
+      delay(55);
+      Keyboard.releaseRaw(u);
+      delay(35);
+    } else {
+      sendVirtualKey(k,"EN",false,false,false,false);
     }
-
     return;
-
   }
 
-  if(
-    upper.startsWith("SCROLL:")
-  ) {
-
-    int v =
-      action.substring(7)
-        .toInt();
-
-    v =
-      constrain(
-        v,
-        -127,
-        127
-      );
-
-    Mouse.move(
-      0,
-      0,
-      v
-    );
-
+  if(upper=="LMB"){
+    Mouse.click(MOUSE_LEFT);
     return;
-
   }
 
-  if(
-    action.indexOf('+') >= 0
-  ) {
+  if(upper=="RMB"){
+    Mouse.click(MOUSE_RIGHT);
+    return;
+  }
 
-    sendCombination(
-      action
-    );
+  if(upper=="MMB"){
+    Mouse.click(MOUSE_MIDDLE);
+    return;
+  }
 
+  if(upper.startsWith("MOVE:")){
+    String v=action.substring(5);
+    int comma=v.indexOf(',');
+    if(comma>=0){
+      int x=v.substring(0,comma).toInt()*mouseSensitivity;
+      int y=v.substring(comma+1).toInt()*mouseSensitivity;
+      while(x!=0||y!=0){
+        int8_t dx=constrain(x,-127,127);
+        int8_t dy=constrain(y,-127,127);
+        Mouse.move(dx,dy);
+        x-=dx;
+        y-=dy;
+      }
+    }
+    return;
+  }
+
+  if(upper.startsWith("SCROLL:")){
+    int v=constrain(action.substring(7).toInt(),-10,10);
+    Mouse.move(0,0,v);
+    return;
+  }
+
+  if(action.indexOf('+')>=0){
+    sendCombination(action);
+    return;
+  }
+
+  releaseAllModifiers();
+  uint8_t u = usageForKey(action);
+  if(u) {
+    Keyboard.pressRaw(u);
+    delay(55);
+    Keyboard.releaseRaw(u);
+    delay(35);
   } else {
-
-    sendVirtualKey(
-      action,
-      "EN",
-      false,
-      false,
-      false,
-      false
-    );
-
+    sendVirtualKey(action,"EN",false,false,false,false);
   }
-
 }
 
 // ============================================================
 // EXECUTE MACRO
 // ============================================================
 
-void executeMacro(
+void startMacroExecution(
   int id
 ) {
 
@@ -3268,43 +2280,106 @@ void executeMacro(
   )
     return;
 
-  String data =
+  macroBuffer =
     macros[id].data;
 
-  int start = 0;
+  macroPos = 0;
+  macroWaitUntil = 0;
+  macroRunning = true;
 
-  while(
-    start < data.length()
-  ) {
+}
 
-    int nl =
-      data.indexOf(
-        '\n',
-        start
+void stopMacroExecution() {
+
+  macroRunning = false;
+  macroBuffer = "";
+  macroPos = 0;
+  macroWaitUntil = 0;
+
+  releaseAllModifiers();
+
+}
+
+void processMacroStep() {
+
+  if(!macroRunning)
+    return;
+
+  if(
+    millis() <
+    macroWaitUntil
+  )
+    return;
+
+  int nl =
+    macroBuffer.indexOf(
+      '\n',
+      macroPos
+    );
+
+  String line;
+
+  if(nl < 0) {
+
+    line =
+      macroBuffer.substring(
+        macroPos
       );
 
-    String line;
+    macroPos =
+      macroBuffer.length();
 
-    if(nl < 0) {
+  }
+  else {
 
-      line =
-        data.substring(
-          start
+    line =
+      macroBuffer.substring(
+        macroPos,
+        nl
+      );
+
+    macroPos =
+      nl + 1;
+
+  }
+
+  line.trim();
+
+  if(line.length()) {
+
+    String upper =
+      line;
+
+    upper.toUpperCase();
+
+    if(
+      upper.startsWith("WAIT:")
+    ) {
+
+      int ms =
+        constrain(
+          line.substring(5).toInt(),
+          0,
+          30000
         );
 
-      start =
-        data.length();
+      macroWaitUntil =
+        millis() + ms;
 
-    } else {
+      if(
+        macroPos >=
+        macroBuffer.length() &&
+        ms == 0
+      ) {
 
-      line =
-        data.substring(
-          start,
-          nl
-        );
+        macroRunning =
+          false;
 
-      start =
-        nl + 1;
+        releaseAllModifiers();
+
+      }
+
+      return;
 
     }
 
@@ -3312,9 +2387,27 @@ void executeMacro(
       line
     );
 
-    yield();
+  }
+
+  if(
+    macroPos >=
+    macroBuffer.length()
+  ) {
+
+    macroRunning =
+      false;
+
+    releaseAllModifiers();
 
   }
+
+}
+
+void executeMacro(
+  int id
+) {
+
+  startMacroExecution(id);
 
 }
 
@@ -3431,108 +2524,258 @@ void loadMacros() {
 // DEFAULT MACROS
 // ============================================================
 
-void createDefaultMacros() {
+bool macroExistsByName(
+  const String &name
+) {
 
-  if(macroCount)
+  for(int i = 0; i < macroCount; i++) {
+
+    if(
+      macros[i].name == name
+    )
+      return true;
+
+  }
+
+  return false;
+
+}
+
+void addDefaultMacro(
+  const char* name,
+  const char* data
+) {
+
+  if(
+    macroCount >=
+    MAX_MACROS
+  )
     return;
 
-  macros[0] = {
-    "Copy",
-    "CTRL+C"
-  };
+  if(
+    macroExistsByName(name)
+  )
+    return;
 
-  macros[1] = {
-    "Paste",
-    "CTRL+V"
-  };
+  macros[macroCount].name =
+    name;
 
-  macros[2] = {
-    "Cut",
-    "CTRL+X"
-  };
+  macros[macroCount].data =
+    data;
 
-  macros[3] = {
-    "Undo",
-    "CTRL+Z"
-  };
+  macroCount++;
 
-  macros[4] = {
-    "Select All",
-    "CTRL+A"
-  };
+}
 
-  macros[5] = {
-    "Task Manager",
+void createDefaultMacros() {
+
+  addDefaultMacro("Copy", "CTRL+C");
+  addDefaultMacro("Paste", "CTRL+V");
+  addDefaultMacro("Cut", "CTRL+X");
+  addDefaultMacro("Undo", "CTRL+Z");
+  addDefaultMacro("Select All", "CTRL+A");
+  addDefaultMacro("Find", "CTRL+F");
+  addDefaultMacro("Save", "CTRL+S");
+
+  addDefaultMacro(
+    "Task Mgr",
     "CTRL+SHIFT+ESC"
-  };
+  );
 
-  macros[6] = {
+  addDefaultMacro(
     "Run",
     "WIN+R"
-  };
+  );
 
-  macros[7] = {
+  addDefaultMacro(
     "Explorer",
     "WIN+E"
-  };
+  );
 
-  macros[8] = {
-    "Switch Window",
+  addDefaultMacro(
+    "ALT+TAB",
     "ALT+TAB"
-  };
+  );
 
-  macros[9] = {
+  addDefaultMacro(
     "Close Window",
     "ALT+F4"
-  };
-  
-  macros[10] = {
-    "CMD",
-    "WIN+R\nWAIT:300\nTYPE:cmd\nKEY:ENTER"
-  };
-  
-  macros[11] = {
-    "PowerShell",
-    "WIN+R\nWAIT:300\nTYPE:powershell\nKEY:ENTER"
-  };
-  
-  macros[12] = {
-    "IPConfig",
-    "WIN+R\nWAIT:300\nTYPE:cmd\nKEY:ENTER\nWAIT:800\nTYPE:ipconfig /all\nKEY:ENTER"
-  };
-  
-  macros[13] = {
-    "Ping 8.8.8.8",
-    "WIN+R\nWAIT:300\nTYPE:cmd\nKEY:ENTER\nWAIT:800\nTYPE:ping 8.8.8.8 -t\nKEY:ENTER"
-  };
-  
-  macros[14] = {
-    "Regedit",
-    "WIN+R\nWAIT:300\nTYPE:regedit\nKEY:ENTER"
-  };
-  
-  macros[15] = {
-    "Services",
-    "WIN+R\nWAIT:300\nTYPE:services.msc\nKEY:ENTER"
-  };
-  
-  macros[16] = {
-    "Device Mgr",
-    "WIN+R\nWAIT:300\nTYPE:devmgmt.msc\nKEY:ENTER"
-  };
-  
-  macros[17] = {
+  );
+
+  addDefaultMacro(
     "Lock PC",
     "WIN+L"
-  };
-  
-  macros[18] = {
+  );
+
+  addDefaultMacro(
     "Show Desktop",
     "WIN+D"
-  };
+  );
 
-  macroCount =
-    19;
+  addDefaultMacro(
+    "Settings",
+    "WIN+I"
+  );
+
+  addDefaultMacro(
+    "Screenshot",
+    "WIN+SHIFT+S"
+  );
+
+  addDefaultMacro(
+    "CMD",
+    "WIN+R\nWAIT:650\nTYPE_EN:cmd\nWAIT:100\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Admin CMD",
+    "WIN+R\nWAIT:400\nTYPE_EN:cmd\nWAIT:250\nCTRL+SHIFT+ENTER\nWAIT:1500\nALT+Y"
+  );
+
+  addDefaultMacro(
+    "PowerShell",
+    "WIN+R\nWAIT:650\nTYPE_EN:powershell\nWAIT:100\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Admin PowerShell",
+    "WIN+R\nWAIT:400\nTYPE_EN:powershell\nWAIT:250\nCTRL+SHIFT+ENTER\nWAIT:1500\nALT+Y"
+  );
+
+  addDefaultMacro(
+    "Regedit",
+    "WIN+R\nWAIT:650\nTYPE_EN:regedit\nWAIT:100\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Services",
+    "WIN+R\nWAIT:650\nTYPE_EN:services.msc\nWAIT:100\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Device Manager",
+    "WIN+R\nWAIT:650\nTYPE_EN:devmgmt.msc\nWAIT:100\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Disk Management",
+    "WIN+R\nWAIT:650\nTYPE_EN:diskmgmt.msc\nWAIT:100\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Computer Management",
+    "WIN+R\nWAIT:650\nTYPE_EN:compmgmt.msc\nWAIT:100\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Event Viewer",
+    "WIN+R\nWAIT:650\nTYPE_EN:eventvwr.msc\nWAIT:100\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "MSConfig",
+    "WIN+R\nWAIT:650\nTYPE_EN:msconfig\nWAIT:100\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "GPEdit",
+    "WIN+R\nWAIT:650\nTYPE_EN:gpedit.msc\nWAIT:100\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Programs",
+    "WIN+R\nWAIT:650\nTYPE_EN:appwiz.cpl\nWAIT:100\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Network Connections",
+    "WIN+R\nWAIT:650\nTYPE_EN:ncpa.cpl\nWAIT:100\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "User Accounts",
+    "WIN+R\nWAIT:650\nTYPE_EN:netplwiz\nWAIT:100\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "System Information",
+    "WIN+R\nWAIT:650\nTYPE_EN:msinfo32\nWAIT:100\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "IPConfig /all",
+    "WIN+R\nWAIT:400\nTYPE_EN:cmd\nKEY:ENTER\nWAIT:700\nTYPE_EN:ipconfig /all\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Ping 8.8.8.8",
+    "WIN+R\nWAIT:400\nTYPE_EN:cmd\nKEY:ENTER\nWAIT:700\nTYPE_EN:ping 8.8.8.8\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Netstat",
+    "WIN+R\nWAIT:400\nTYPE_EN:cmd\nKEY:ENTER\nWAIT:700\nTYPE_EN:netstat -ano\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Flush DNS",
+    "WIN+R\nWAIT:400\nTYPE_EN:cmd\nKEY:ENTER\nWAIT:700\nTYPE_EN:ipconfig /flushdns\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "System Info",
+    "WIN+R\nWAIT:400\nTYPE_EN:cmd\nKEY:ENTER\nWAIT:700\nTYPE_EN:systeminfo\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Task List",
+    "WIN+R\nWAIT:400\nTYPE_EN:cmd\nKEY:ENTER\nWAIT:700\nTYPE_EN:tasklist\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "GPUpdate",
+    "WIN+R\nWAIT:400\nTYPE_EN:cmd\nKEY:ENTER\nWAIT:700\nTYPE_EN:gpupdate /force\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Restart Explorer",
+    "WIN+R\nWAIT:400\nTYPE_EN:powershell -Command \"Stop-Process -Name explorer -Force; Start-Process explorer.exe\"\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "CMD ipconfig",
+    "WIN+R\nWAIT:400\nTYPE_EN:cmd /k ipconfig\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "CMD tasklist",
+    "WIN+R\nWAIT:400\nTYPE_EN:cmd /k tasklist\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "CMD netstat",
+    "WIN+R\nWAIT:400\nTYPE_EN:cmd /k netstat -ano\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Wi-Fi Profiles",
+    "WIN+R\nWAIT:400\nTYPE_EN:cmd\nKEY:ENTER\nWAIT:900\nTYPE_EN:netsh wlan show profiles\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "SFC /scannow",
+    "WIN+R\nWAIT:400\nTYPE_EN:cmd\nWAIT:250\nCTRL+SHIFT+ENTER\nWAIT:1500\nALT+Y\nWAIT:800\nTYPE_EN:sfc /scannow\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Open Run + type",
+    "WIN+R\nWAIT:300\nTYPE_EN:Hello from ESP32\nKEY:ENTER"
+  );
+
+  addDefaultMacro(
+    "Mouse Click Sequence",
+    "MOVE:100,0\nLMB\nWAIT:200\nMOVE:-100,0\nRMB"
+  );
 
   saveMacros();
 
@@ -3708,6 +2951,9 @@ void handleLanguage() {
 
   switchLanguagePC();
 
+  russianMode =
+    !russianMode;
+
   server.send(
     200,
     "text/plain",
@@ -3841,6 +3087,39 @@ void handleCombo() {
   );
 
 }
+// ============================================================
+// HTTP: VOICE / TEXT INPUT
+// ============================================================
+
+void handleType() {
+
+  String text =
+    server.arg("text");
+
+  String lang =
+    server.arg("lang");
+
+  text =
+    urlDecode(text);
+
+  if(lang.length() == 0)
+    lang =
+      russianMode ? "RU" : "EN";
+
+  typeText(
+    text,
+    lang
+  );
+
+  server.send(
+    200,
+    "text/plain",
+    "OK"
+  );
+
+}
+
+
 
 // ============================================================
 // SETTINGS
@@ -4249,8 +3528,7 @@ void handleMacroDelete() {
 void handleMacroRun() {
 
   int id =
-    server.arg("id")
-      .toInt();
+    server.arg("id").toInt();
 
   if(
     id < 0 ||
@@ -4267,9 +3545,24 @@ void handleMacroRun() {
 
   }
 
-  executeMacro(
+  if(macroRunning)
+    stopMacroExecution();
+
+  startMacroExecution(
     id
   );
+
+  server.send(
+    200,
+    "text/plain",
+    "OK"
+  );
+
+}
+
+void handleMacroStop() {
+
+  stopMacroExecution();
 
   server.send(
     200,
@@ -4470,6 +3763,18 @@ void startServer() {
     HTTP_GET,
     handleCombo
   );
+  server.on(
+    "/api/type",
+    HTTP_POST,
+    handleType
+  );
+  server.on(
+    "/api/type",
+    HTTP_GET,
+    handleType
+  );
+
+
 
   server.on(
     "/api/settings",
@@ -4503,6 +3808,12 @@ void startServer() {
 
   server.on(
     "/api/macro/save",
+    HTTP_POST,
+    handleMacroSave
+  );
+
+  server.on(
+    "/api/macro/save",
     HTTP_GET,
     handleMacroSave
   );
@@ -4517,6 +3828,11 @@ void startServer() {
     "/api/macro/run",
     HTTP_GET,
     handleMacroRun
+  );
+  server.on(
+    "/api/macro/stop",
+    HTTP_GET,
+    handleMacroStop
   );
 
   server.on(
@@ -4636,6 +3952,14 @@ void setup() {
     "USB: HID Keyboard + Mouse"
   );
 
+  Serial.println(
+    "Scroll slider: continuous + auto-return"
+  );
+
+  Serial.println(
+    "Smartphone keyboard: enabled"
+  );
+
 }
 
 // ============================================================
@@ -4647,6 +3971,8 @@ void loop() {
   dnsServer.processNextRequest();
 
   server.handleClient();
+
+  processMacroStep();
 
   delay(1);
 
