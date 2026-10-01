@@ -145,6 +145,7 @@ void handleModifiers();
 void handleClearModifiers();
 void handleVirtualKey();
 void handleCombo();
+void handleClipboard();
 void handleType();
 void handleSettings();
 void handleSensitivity();
@@ -216,6 +217,7 @@ button.mic.listening{background:#b02854;animation:pulse 1s infinite}
 #keyboard.open{transform:translateY(0)}
 .keyRow{display:flex;gap:3px;margin-bottom:3px}
 .key{flex:1;min-width:0;min-height:44px;padding:3px;font-size:13px;border-radius:8px}
+.key.pressed{transform:scale(1.055);box-shadow:0 0 0 2px #24b9ff inset,0 2px 10px rgba(36,185,255,.28);position:relative;z-index:5;transition:transform .06s ease,box-shadow .06s ease}
 .key.modifier{background:#303944}
 .key.symbol{background:#1a2430;font-size:15px}
 .key.backspace{background:#632d2d}
@@ -252,8 +254,8 @@ label{display:block;color:#8f9ba7;font-size:12px;margin:7px 0 4px}
 <body>
 <div id="app">
 <div id="top">
-<button class="topButton" onclick="quickCombo('CTRL+C')">COPY</button>
-<button class="topButton" onclick="quickCombo('CTRL+V')">PASTE</button>
+<button class="topButton" onclick="clipboardAction('copy')">COPY</button>
+<button class="topButton" onclick="clipboardAction('paste')">PASTE</button>
 <div id="status">ESP32 HID</div>
 <button id="lang" class="topButton" onclick="toggleLanguage()">EN</button>
 <button class="topButton" onclick="openMacros()">MAC</button>
@@ -806,6 +808,31 @@ function mouseUp(b){fetch('/api/mouseup?b='+b);}
 function startLongPress(action){action();longPressTimer=setTimeout(()=>{longPressInterval=setInterval(action,80);},500);}
 function cancelLongPress(){if(longPressTimer){clearTimeout(longPressTimer);longPressTimer=null;}if(longPressInterval){clearInterval(longPressInterval);longPressInterval=null;}}
 
+function flashKeyButton(b){
+  if(!b) return;
+  b.classList.add('pressed');
+  if(b._pressFlashTimer) clearTimeout(b._pressFlashTimer);
+  b._pressFlashTimer=setTimeout(()=>{
+    b.classList.remove('pressed');
+  },135);
+}
+
+function bindKeyPressVisual(b){
+  b.addEventListener('pointerdown',()=>flashKeyButton(b),{passive:true});
+  b.addEventListener('pointerup',()=>{if(b._pressFlashTimer) clearTimeout(b._pressFlashTimer); b._pressFlashTimer=setTimeout(()=>b.classList.remove('pressed'),55);},{passive:true});
+  b.addEventListener('pointercancel',()=>b.classList.remove('pressed'),{passive:true});
+}
+
+async function clipboardAction(action){
+  const topButtons=document.querySelectorAll('#top .topButton');
+  topButtons.forEach(b=>{
+    if((action==='copy' && b.innerText==='COPY') || (action==='paste' && b.innerText==='PASTE')) flashKeyButton(b);
+  });
+  try{
+    await fetch('/api/clipboard?a='+encodeURIComponent(action),{cache:'no-store'});
+  }catch(e){console.log('clipboard error',e);}
+}
+
 function renderKeyboard(){
 const root=document.getElementById('keys');
 root.innerHTML='';
@@ -867,10 +894,10 @@ moreBtn.innerText=(keyboardLayer==='symbols2')?'123':'#+=';
 moreBtn.onclick=()=>{if(keyboardLayer==='symbols2')keyboardLayer='symbols';else keyboardLayer='symbols2';renderKeyboard();};
 bottom.appendChild(moreBtn);
 bottom.appendChild(createKey(','));
-const space=document.createElement('button');space.className='key space';space.innerText='SPACE';space.onclick=()=>pressNormalKey('SPACE');bottom.appendChild(space);
+const space=document.createElement('button');space.className='key space';space.innerText='SPACE';bindKeyPressVisual(space);space.onclick=()=>pressNormalKey('SPACE');bottom.appendChild(space);
 bottom.appendChild(createKey('.'));
 const micBtn=document.createElement('button');micBtn.className='key micKey';micBtn.innerText='🎤';micBtn.onclick=toggleVoice;bottom.appendChild(micBtn);
-const enter=document.createElement('button');enter.className='key enter';enter.innerText='ENTER';enter.onclick=()=>pressNormalKey('ENTER');bottom.appendChild(enter);
+const enter=document.createElement('button');enter.className='key enter';enter.innerText='ENTER';bindKeyPressVisual(enter);enter.onclick=()=>pressNormalKey('ENTER');bottom.appendChild(enter);
 root.appendChild(bottom);
 
 const modRow=document.createElement('div');modRow.className='keyRow';
@@ -886,18 +913,21 @@ function createKey(k,isSymbol){
 const b=document.createElement('button');b.className='key';
 if(isSymbol)b.classList.add('symbol');
 b.innerText=k;
+bindKeyPressVisual(b);
 if(['CTRL','SHIFT','ALT','WIN'].includes(k)){b.classList.add('modifier');b.onclick=()=>toggleModifier(k);}
 else{b.onclick=()=>pressNormalKey(k);}
 return b;
 }
 function createShiftKey(){
 const b=document.createElement('button');b.className='key modifier';b.innerText='⇧';b.style.flex='1.5';
+bindKeyPressVisual(b);
 if(keyboardLayer==='shifted')b.classList.add('active');
 b.onclick=()=>{if(keyboardLayer==='letters')keyboardLayer='shifted';else keyboardLayer='letters';renderKeyboard();};
 return b;
 }
 function createBackspaceKey(){
 const b=document.createElement('button');b.className='key backspace';b.innerText='⌫';b.style.flex='1.5';
+bindKeyPressVisual(b);
 const doBs=()=>pressNormalKey('BACKSPACE');
 b.onpointerdown=(e)=>{e.preventDefault();startLongPress(doBs);};
 b.onpointerup=()=>cancelLongPress();b.onpointercancel=()=>cancelLongPress();b.onpointerleave=()=>cancelLongPress();
@@ -3088,6 +3118,43 @@ void handleCombo() {
 
 }
 // ============================================================
+// DIRECT CLIPBOARD SHORTCUTS
+// ============================================================
+
+void handleClipboard() {
+
+  String action = server.arg("a");
+  action.toLowerCase();
+
+  if(action != "copy" && action != "paste") {
+    server.send(400,"text/plain","BAD ACTION");
+    return;
+  }
+
+  // Use a dedicated raw HID path instead of the generic combo parser.
+  // C = HID usage 0x06, V = HID usage 0x19.
+  const uint8_t usage = (action == "copy") ? 0x06 : 0x19;
+
+  // Ensure a previous modifier state cannot corrupt Ctrl+C/Ctrl+V.
+  releaseAllModifiers();
+
+  Keyboard.press(KEY_LEFT_CTRL);
+  delay(35);
+  Keyboard.pressRaw(usage);
+  delay(65);
+  Keyboard.releaseRaw(usage);
+  delay(25);
+  Keyboard.release(KEY_LEFT_CTRL);
+
+  heldCtrl=false;
+  heldShift=false;
+  heldAlt=false;
+  heldWin=false;
+
+  server.send(200,"text/plain","OK");
+
+}
+// ============================================================
 // HTTP: VOICE / TEXT INPUT
 // ============================================================
 
@@ -3762,6 +3829,11 @@ void startServer() {
     "/api/combo",
     HTTP_GET,
     handleCombo
+  );
+  server.on(
+    "/api/clipboard",
+    HTTP_GET,
+    handleClipboard
   );
   server.on(
     "/api/type",
