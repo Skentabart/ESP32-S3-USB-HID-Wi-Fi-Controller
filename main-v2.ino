@@ -309,6 +309,7 @@ label{display:block;color:#8f9ba7;font-size:12px;margin:7px 0 4px}
 </div>
 <script>
 let language='EN';
+let voiceLanguage='RU';
 let keyboardLayer='letters';
 let modifiers={CTRL:false,SHIFT:false,ALT:false,WIN:false};
 let pointerActive=false,lastX=0,lastY=0,moveQueueX=0,moveQueueY=0,lastMoveSend=0;
@@ -320,73 +321,66 @@ let voiceFinalBuffer = '';
 let voiceFallbackOpen=false;
 
 function voiceNormalize(text){
-  let t = String(text || '').trim();
+  let t=String(text||'').trim();
   if(!t) return '';
 
-  if(language === 'RU'){
-    const replacements = [
-      [/точка\s+с\s+запятой/gi, ';'],
-      [/новая строка/gi, '\n'],
-      [/перенос строки/gi, '\n'],
-      [/пробел/gi, ' '],
-      [/табуляция/gi, '\t'],
-      [/ввод/gi, '\n'],
-      [/\bтаб\b/gi, '\t'],
-      [/двоеточие/gi, ':'],
-      [/точка/gi, '.'],
-      [/запятая/gi, ','],
-      [/вопросительный знак/gi, '?'],
-      [/восклицательный знак/gi, '!']
+  if(voiceLanguage==='RU'){
+    const replacements=[
+      [/точка\\s+с\\s+запятой/gi,';'],
+      [/новая строка/gi,'\\n'],
+      [/перенос строки/gi,'\\n'],
+      [/пробел/gi,' '],
+      [/табуляция/gi,'\\t'],
+      [/ввод/gi,'\\n'],
+      [/\\bтаб\\b/gi,'\\t'],
+      [/двоеточие/gi,':'],
+      [/точка/gi,'.'],
+      [/запятая/gi,','],
+      [/вопросительный знак/gi,'?'],
+      [/восклицательный знак/gi,'!']
     ];
-    replacements.forEach(([re,v]) => t=t.replace(re,v));
-  } else {
-    const replacements = [
-      [/semicolon/gi, ';'],
-      [/new paragraph/gi, '\n\n'],
-      [/new line/gi, '\n'],
-      [/\bspace\b/gi, ' '],
-      [/\btab\b/gi, '\t'],
-      [/\benter\b/gi, '\n'],
-      [/colon/gi, ':'],
-      [/period/gi, '.'],
-      [/comma/gi, ','],
-      [/question mark/gi, '?'],
-      [/exclamation mark/gi, '!']
+    replacements.forEach(([re,v])=>t=t.replace(re,v));
+  }else{
+    const replacements=[
+      [/semicolon/gi,';'],
+      [/new paragraph/gi,'\\n\\n'],
+      [/new line/gi,'\\n'],
+      [/\\bspace\\b/gi,' '],
+      [/\\btab\\b/gi,'\\t'],
+      [/\\benter\\b/gi,'\\n'],
+      [/colon/gi,':'],
+      [/period/gi,'.'],
+      [/comma/gi,','],
+      [/question mark/gi,'?'],
+      [/exclamation mark/gi,'!']
     ];
-    replacements.forEach(([re,v]) => t=t.replace(re,v));
+    replacements.forEach(([re,v])=>t=t.replace(re,v));
   }
-
   return t;
 }
 
 function voiceSetStatus(text){
   const el=document.getElementById('voiceStatus');
-  if(!el) return;
-  el.innerText=text ? '🎤 ' + text : '🎤 Говорите...';
+  if(!el)return;
+  el.innerText=text?'🎤 '+text:'🎤 Говорите...';
 }
 
 function voiceShowStatusError(text){
   const el=document.getElementById('voiceStatus');
-  if(!el) return;
-  el.innerText='🎤 ' + text;
+  if(!el)return;
+  el.innerText='🎤 '+text;
   el.classList.add('active');
 }
 
 async function sendVoiceText(text){
   const normalized=voiceNormalize(text);
-  if(!normalized) return false;
-
+  if(!normalized)return false;
   try{
     const r=await fetch('/api/type',{
       method:'POST',
-      headers:{
-        'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'
-      },
-      body:
-        'text='+encodeURIComponent(normalized)+
-        '&lang='+encodeURIComponent(language)
+      headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+      body:'text='+encodeURIComponent(normalized)+'&lang='+encodeURIComponent(voiceLanguage)
     });
-
     return r.ok;
   }catch(e){
     console.log('voice send error',e);
@@ -395,25 +389,25 @@ async function sendVoiceText(text){
 }
 
 function getSpeechRecognitionCtor(){
-  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  return window.SpeechRecognition||window.webkitSpeechRecognition||null;
 }
 
 function voiceErrorText(code){
   const map={
     'not-allowed':'доступ к микрофону запрещён. Разрешите микрофон для этой страницы.',
-    'service-not-allowed':'распознавание речи запрещено браузером.',
+    'service-not-allowed':'браузер не разрешил распознавание речи.',
     'audio-capture':'микрофон недоступен.',
-    'network':'сервис распознавания недоступен. Для ESP32 по HTTP используйте микрофон клавиатуры телефона или откройте интерфейс через HTTPS.',
-    'language-not-supported':'выбранный язык речи не поддерживается браузером.',
+    'network':'облачное распознавание недоступно. Переключаюсь на локальный ввод.',
+    'language-not-supported':'локальный русский пакет речи недоступен в этом браузере.',
     'no-speech':'речь не обнаружена — продолжаю слушать.',
     'aborted':'распознавание остановлено.'
   };
-  return map[code] || ('ошибка: ' + code);
+  return map[code]||('ошибка: '+code);
 }
 
 async function prepareSpeechRecognition(){
   const SR=getSpeechRecognitionCtor();
-  if(!SR) return null;
+  if(!SR)return null;
 
   if(!recognition){
     recognition=new SR();
@@ -422,27 +416,54 @@ async function prepareSpeechRecognition(){
     recognition.maxAlternatives=1;
   }
 
-  recognition.lang=language==='RU'?'ru-RU':'en-US';
+  const lang=voiceLanguage==='RU'?'ru-RU':'en-US';
+  recognition.lang=lang;
 
-  // Chrome supports on-device recognition in newer builds when a local
-  // language pack is available. Use it when available; otherwise fall
-  // back to the browser's normal recognition service.
+  // Prefer on-device recognition. If the browser cannot provide a local
+  // language pack, DO NOT fall back to the cloud service: that is what
+  // causes the "no connection to Google" problem on some devices.
+  let localReady=false;
   try{
     if(typeof SR.available==='function'){
-      const result=await SR.available({
-        langs:[recognition.lang],
+      let state=await SR.available({
+        langs:[lang],
         processLocally:true,
         quality:'dictation'
       });
 
-      if(result==='available'){
-        recognition.processLocally=true;
-      }else{
-        try{ recognition.processLocally=false; }catch(e){}
+      if(state==='available'){
+        localReady=true;
+      }else if((state==='downloadable'||state==='downloading') && typeof SR.install==='function'){
+        voiceSetStatus('Загрузка локального языкового пакета...');
+        const installed=await SR.install({
+          langs:[lang],
+          processLocally:true,
+          quality:'dictation'
+        });
+        if(installed){
+          state=await SR.available({
+            langs:[lang],
+            processLocally:true,
+            quality:'dictation'
+          });
+          localReady=(state==='available');
+        }
       }
     }
   }catch(e){
-    try{ recognition.processLocally=false; }catch(err){}
+    console.log('on-device speech unavailable',e);
+  }
+
+  if(!localReady){
+    recognition=null;
+    return null;
+  }
+
+  try{
+    recognition.processLocally=true;
+  }catch(e){
+    recognition=null;
+    return null;
   }
 
   recognition.onstart=()=>{
@@ -451,76 +472,64 @@ async function prepareSpeechRecognition(){
     voiceShouldRestart=true;
     voiceFinalBuffer='';
     const status=document.getElementById('voiceStatus');
-    if(status) status.classList.add('active');
+    if(status)status.classList.add('active');
     voiceSetStatus('Говорите...');
+
     document.querySelectorAll('.micKey').forEach(b=>b.classList.add('listening'));
   };
 
   recognition.onresult=async(e)=>{
     let interim='';
-
     for(let i=e.resultIndex;i<e.results.length;i++){
       const text=e.results[i][0].transcript;
-
       if(e.results[i].isFinal){
-        if(text && text.trim()){
-          voiceFinalBuffer += (voiceFinalBuffer ? ' ' : '') + text.trim();
+        if(text&&text.trim()){
+          voiceFinalBuffer+=(voiceFinalBuffer?' ':'')+text.trim();
           const ok=await sendVoiceText(text);
-          if(!ok) voiceSetStatus('не удалось передать текст');
+          if(!ok)voiceSetStatus('не удалось передать текст');
         }
       }else{
-        interim += text;
+        interim+=text;
       }
     }
-
-    if(interim) voiceSetStatus(interim);
-    else if(voiceListening) voiceSetStatus('Говорите...');
+    if(interim)voiceSetStatus(interim);
+    else if(voiceListening)voiceSetStatus('Говорите...');
   };
 
   recognition.onerror=(e)=>{
-    const code=e && e.error ? e.error : 'unknown';
+    const code=e&&e.error?e.error:'unknown';
     console.log('SpeechRecognition error:',code);
 
     if(code==='no-speech'){
-      if(voiceListening) voiceSetStatus('Тишина — продолжаю слушать...');
-      return;
-    }
-
-    if(code==='aborted' && voiceShouldRestart){
+      if(voiceListening)voiceSetStatus('Тишина — продолжаю слушать...');
       return;
     }
 
     voiceStartBusy=false;
+    voiceShouldRestart=false;
+    voiceListening=false;
 
-    if(code==='not-allowed' || code==='service-not-allowed' ||
-       code==='audio-capture' || code==='network' ||
-       code==='language-not-supported'){
-      voiceShouldRestart=false;
-      voiceListening=false;
-      showVoiceFallback(voiceErrorText(code));
-      updateVoiceVisualState(false);
-      return;
-    }
-
-    if(voiceListening){
-      voiceSetStatus(voiceErrorText(code));
-    }
+    showVoiceFallback(
+      code==='network'
+        ? 'Локальное распознавание не запустилось. Интернет/Google для голосового ввода не требуется — используйте микрофон клавиатуры телефона.'
+        : voiceErrorText(code)
+    );
+    updateVoiceVisualState(false);
   };
 
   recognition.onend=()=>{
     voiceStartBusy=false;
 
-    if(voiceListening && voiceShouldRestart){
-      if(voiceRestartTimer) clearTimeout(voiceRestartTimer);
+    if(voiceListening&&voiceShouldRestart){
+      if(voiceRestartTimer)clearTimeout(voiceRestartTimer);
       voiceRestartTimer=setTimeout(()=>{
         voiceRestartTimer=null;
-        if(!voiceListening || !voiceShouldRestart) return;
+        if(!voiceListening||!voiceShouldRestart)return;
         try{
-          recognition.lang=language==='RU'?'ru-RU':'en-US';
+          recognition.lang=voiceLanguage==='RU'?'ru-RU':'en-US';
+          recognition.processLocally=true;
           recognition.start();
-        }catch(e){
-          // Another start may already be pending; the next end event will retry.
-        }
+        }catch(e){}
       },180);
       return;
     }
@@ -529,7 +538,7 @@ async function prepareSpeechRecognition(){
   };
 
   recognition.onnomatch=()=>{
-    if(voiceListening) voiceSetStatus('Не удалось распознать речь...');
+    if(voiceListening)voiceSetStatus('Не удалось распознать речь...');
   };
 
   return recognition;
@@ -537,7 +546,7 @@ async function prepareSpeechRecognition(){
 
 function updateVoiceVisualState(active){
   const status=document.getElementById('voiceStatus');
-  if(status) status.classList.toggle('active',!!active);
+  if(status)status.classList.toggle('active',!!active);
   document.querySelectorAll('.micKey').forEach(b=>b.classList.toggle('listening',!!active));
 }
 
@@ -545,15 +554,16 @@ function showVoiceFallback(reason){
   const box=document.getElementById('voiceFallback');
   const hint=document.getElementById('voiceFallbackHint');
   const input=document.getElementById('voiceFallbackInput');
-  if(!box || !input) return;
+  if(!box||!input)return;
 
   if(hint){
-    hint.innerText=(reason || 'Используйте микрофон клавиатуры телефона для диктовки текста.')+
-      '\n\nНажмите поле ниже — откроется клавиатура телефона. После диктовки нажмите ОТПРАВИТЬ.';
+    hint.innerText=(reason||'Используйте микрофон клавиатуры телефона для диктовки текста.')+
+      '\\n\\nНажмите поле ниже — откроется клавиатура телефона. После диктовки нажмите ОТПРАВИТЬ.';
   }
 
   box.classList.add('open');
   voiceFallbackOpen=true;
+
   setTimeout(()=>{
     try{
       input.focus();
@@ -564,15 +574,15 @@ function showVoiceFallback(reason){
 
 function closeVoiceFallback(){
   const box=document.getElementById('voiceFallback');
-  if(box) box.classList.remove('open');
+  if(box)box.classList.remove('open');
   voiceFallbackOpen=false;
 }
 
 async function sendVoiceFallback(){
   const input=document.getElementById('voiceFallbackInput');
-  if(!input) return;
+  if(!input)return;
   const value=input.value;
-  if(!value.trim()) return;
+  if(!value.trim())return;
 
   const ok=await sendVoiceText(value);
   if(ok){
@@ -588,44 +598,51 @@ async function sendVoiceFallback(){
 async function toggleVoice(){
   const SR=getSpeechRecognitionCtor();
 
-  if(!SR){
-    showVoiceFallback('Этот браузер не поддерживает SpeechRecognition.');
-    return;
-  }
-
   if(voiceListening){
     voiceShouldRestart=false;
     voiceListening=false;
-    if(voiceRestartTimer){clearTimeout(voiceRestartTimer);voiceRestartTimer=null;}
-    try{ recognition.stop(); }catch(e){ try{recognition.abort();}catch(err){} }
+    if(voiceRestartTimer){
+      clearTimeout(voiceRestartTimer);
+      voiceRestartTimer=null;
+    }
+    try{recognition.stop();}catch(e){try{recognition.abort();}catch(err){}}
     updateVoiceVisualState(false);
+    return;
+  }
+
+  if(!SR){
+    showVoiceFallback('Этот браузер не поддерживает локальное распознавание речи.');
     return;
   }
 
   try{
     await prepareSpeechRecognition();
   }catch(e){
-    showVoiceFallback('Не удалось инициализировать распознавание речи.');
-    return;
+    recognition=null;
   }
 
   if(!recognition){
-    showVoiceFallback('Распознавание речи недоступно.');
+    showVoiceFallback(
+      voiceLanguage==='RU'
+        ? 'На этом устройстве нет локального русского распознавания речи. Используйте микрофон клавиатуры телефона.'
+        : 'На этом устройстве нет локального английского распознавания речи. Используйте микрофон клавиатуры телефона.'
+    );
+    updateVoiceVisualState(false);
     return;
   }
 
   voiceShouldRestart=true;
   voiceListening=true;
   voiceStartBusy=true;
-  recognition.lang=language==='RU'?'ru-RU':'en-US';
-
+  recognition.lang=voiceLanguage==='RU'?'ru-RU':'en-US';
   try{
+    recognition.processLocally=true;
     recognition.start();
   }catch(e){
     voiceStartBusy=false;
     voiceListening=false;
     voiceShouldRestart=false;
-    showVoiceFallback('Браузер не разрешил запуск микрофона.');
+    showVoiceFallback('Браузер не разрешил запуск локального микрофона.');
     updateVoiceVisualState(false);
   }
 }
@@ -633,9 +650,13 @@ async function toggleVoice(){
 async function toggleLanguage(){
 await fetch('/api/language');
 language=(language==='EN')?'RU':'EN';
-updateLanguageUI();renderKeyboard();
+voiceLanguage=language;
+updateLanguageUI();
+renderKeyboard();
+
 if(recognition && voiceListening){
-  recognition.lang=language==='RU'?'ru-RU':'en-US';
+  recognition.lang=voiceLanguage==='RU'?'ru-RU':'en-US';
+  recognition.processLocally=true;
   voiceShouldRestart=true;
   try{ recognition.stop(); }catch(e){}
 }
@@ -643,6 +664,7 @@ if(recognition && voiceListening){
 function updateLanguageUI(){
 document.getElementById('lang').innerText=language;
 document.getElementById('keyboardLang').innerText=language;
+document.querySelectorAll('.micKey').forEach(b=>b.innerText='🎤 '+voiceLanguage);
 }
 
 const touchpad=document.getElementById('touchpad');
@@ -1011,7 +1033,7 @@ bottom.appendChild(moreBtn);
 bottom.appendChild(createKey(','));
 const space=document.createElement('button');space.className='key space';space.innerText='SPACE';bindKeyPressVisual(space);space.onclick=()=>pressNormalKey('SPACE');bottom.appendChild(space);
 bottom.appendChild(createKey('.'));
-const micBtn=document.createElement('button');micBtn.className='key micKey';micBtn.innerText='🎤';micBtn.onclick=toggleVoice;bottom.appendChild(micBtn);
+const micBtn=document.createElement('button');micBtn.className='key micKey';micBtn.innerText='🎤 '+voiceLanguage;micBtn.onclick=toggleVoice;bottom.appendChild(micBtn);
 const enter=document.createElement('button');enter.className='key enter';enter.innerText='ENTER';bindKeyPressVisual(enter);enter.onclick=()=>pressNormalKey('ENTER');bottom.appendChild(enter);
 root.appendChild(bottom);
 
