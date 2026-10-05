@@ -2243,8 +2243,10 @@ uint8_t russianCodepointUsage(
 
   switch(cp) {
 
-    case 0x0410: uppercase=true; return 0x04;
-    case 0x0430: return 0x04;
+    // Russian layout: Cyrillic А is on the physical F key (HID 0x09).
+    // HID 0x04 is the physical A key and produces Cyrillic Ф in RU.
+    case 0x0410: uppercase=true; return 0x09;
+    case 0x0430: return 0x09;
     case 0x0411: uppercase=true; return 0x36;
     case 0x0431: return 0x36;
     case 0x0412: uppercase=true; return 0x07;
@@ -2285,8 +2287,8 @@ uint8_t russianCodepointUsage(
     case 0x0442: return 0x11;
     case 0x0423: uppercase=true; return 0x08;
     case 0x0443: return 0x08;
-    case 0x0424: uppercase=true; return 0x09;
-    case 0x0444: return 0x09;
+    case 0x0424: uppercase=true; return 0x04;
+    case 0x0444: return 0x04;
     case 0x0425: uppercase=true; return 0x2F;
     case 0x0445: return 0x2F;
     case 0x0426: uppercase=true; return 0x1A;
