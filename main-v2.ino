@@ -309,7 +309,7 @@ label{display:block;color:#8f9ba7;font-size:12px;margin:7px 0 4px}
 </div>
 <script>
 let language='EN';
-let voiceLanguage='RU';
+let voiceLanguage='RU'; // Voice button starts in Russian intentionally.
 let keyboardLayer='letters';
 let modifiers={CTRL:false,SHIFT:false,ALT:false,WIN:false};
 let pointerActive=false,lastX=0,lastY=0,moveQueueX=0,moveQueueY=0,lastMoveSend=0;
@@ -320,19 +320,23 @@ let voiceRestartTimer=null;
 let voiceFinalBuffer = '';
 let voiceFallbackOpen=false;
 
+// Voice text requests are serialized so several final speech-recognition
+// events cannot type into the PC concurrently and race the RU/EN layout state.
+let voiceSendQueue=Promise.resolve();
+
 function voiceNormalize(text){
   let t=String(text||'').trim();
   if(!t) return '';
 
   if(voiceLanguage==='RU'){
     const replacements=[
-      [/точка\\s+с\\s+запятой/gi,';'],
-      [/новая строка/gi,'\\n'],
-      [/перенос строки/gi,'\\n'],
+      [/точка\s+с\s+запятой/gi,';'],
+      [/новая строка/gi,'\n'],
+      [/перенос строки/gi,'\n'],
       [/пробел/gi,' '],
-      [/табуляция/gi,'\\t'],
-      [/ввод/gi,'\\n'],
-      [/\\bтаб\\b/gi,'\\t'],
+      [/табуляция/gi,'\t'],
+      [/ввод/gi,'\n'],
+      [/\bтаб\b/gi,'\t'],
       [/двоеточие/gi,':'],
       [/точка/gi,'.'],
       [/запятая/gi,','],
@@ -340,14 +344,20 @@ function voiceNormalize(text){
       [/восклицательный знак/gi,'!']
     ];
     replacements.forEach(([re,v])=>t=t.replace(re,v));
+
+    // Some speech engines can emit Latin 'a/A' inside an otherwise
+    // Cyrillic word. In Windows RU layout physical A is 'ф', so such
+    // a character would become exactly the corruption seen in voice input.
+    t=t.replace(/([А-Яа-яЁё])a(?=[А-Яа-яЁё])/g,'$1а');
+    t=t.replace(/([А-Яа-яЁё])A(?=[А-Яа-яЁё])/g,'$1А');
   }else{
     const replacements=[
       [/semicolon/gi,';'],
-      [/new paragraph/gi,'\\n\\n'],
-      [/new line/gi,'\\n'],
-      [/\\bspace\\b/gi,' '],
-      [/\\btab\\b/gi,'\\t'],
-      [/\\benter\\b/gi,'\\n'],
+      [/new paragraph/gi,'\n\n'],
+      [/new line/gi,'\n'],
+      [/\bspace\b/gi,' '],
+      [/\btab\b/gi,'\t'],
+      [/\benter\b/gi,'\n'],
       [/colon/gi,':'],
       [/period/gi,'.'],
       [/comma/gi,','],
@@ -372,9 +382,9 @@ function voiceShowStatusError(text){
   el.classList.add('active');
 }
 
-async function sendVoiceText(text){
+async function sendVoiceTextNow(text){
   const normalized=voiceNormalize(text);
-  if(!normalized)return false;
+  if(!normalized)return true;
   try{
     const r=await fetch('/api/type',{
       method:'POST',
@@ -386,6 +396,12 @@ async function sendVoiceText(text){
     console.log('voice send error',e);
     return false;
   }
+}
+
+function sendVoiceText(text){
+  const job=voiceSendQueue.then(()=>sendVoiceTextNow(text));
+  voiceSendQueue=job.catch(()=>false);
+  return job;
 }
 
 function getSpeechRecognitionCtor(){
@@ -2351,6 +2367,41 @@ void typeTextRU(String text) {
         Keyboard.releaseRaw(0x2B);
         i++;
         continue;
+      }
+
+      // Voice recognition may occasionally return Latin 'a/A' while
+      // speaking Russian (for example "нaстройки"). If that letter is
+      // adjacent to Cyrillic UTF-8, treat it as Cyrillic А/а explicitly.
+      if((c == 'a' || c == 'A') &&
+         i > 0 && i + 1 < len) {
+
+        const bool prevCyrillic =
+          (i >= 2) &&
+          ((data[i-2] == 0xD0 || data[i-2] == 0xD1) &&
+           ((data[i-1] >= 0x80 && data[i-1] <= 0xBF)));
+
+        const bool nextCyrillic =
+          (i + 2 < len) &&
+          ((data[i+1] == 0xD0 || data[i+1] == 0xD1) &&
+           ((data[i+2] >= 0x80 && data[i+2] <= 0xBF)));
+
+        if(prevCyrillic || nextCyrillic) {
+          Keyboard.pressRaw(0x09); // physical F key = А in RU layout
+          delay(7);
+          Keyboard.releaseRaw(0x09);
+
+          if(c == 'A') {
+            // Uppercase А must be Shift+F.
+            Keyboard.press(KEY_LEFT_SHIFT);
+            Keyboard.pressRaw(0x09);
+            delay(7);
+            Keyboard.releaseRaw(0x09);
+            Keyboard.release(KEY_LEFT_SHIFT);
+          }
+
+          i++;
+          continue;
+        }
       }
 
       String one;
