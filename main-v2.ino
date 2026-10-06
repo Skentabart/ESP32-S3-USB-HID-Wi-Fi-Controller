@@ -2386,18 +2386,16 @@ void typeTextRU(String text) {
            ((data[i+2] >= 0x80 && data[i+2] <= 0xBF)));
 
         if(prevCyrillic || nextCyrillic) {
-          Keyboard.pressRaw(0x09); // physical F key = А in RU layout
+          // Physical F is А in the Windows Russian layout.
+          if(c == 'A')
+            Keyboard.press(KEY_LEFT_SHIFT);
+
+          Keyboard.pressRaw(0x09);
           delay(7);
           Keyboard.releaseRaw(0x09);
 
-          if(c == 'A') {
-            // Uppercase А must be Shift+F.
-            Keyboard.press(KEY_LEFT_SHIFT);
-            Keyboard.pressRaw(0x09);
-            delay(7);
-            Keyboard.releaseRaw(0x09);
+          if(c == 'A')
             Keyboard.release(KEY_LEFT_SHIFT);
-          }
 
           i++;
           continue;
